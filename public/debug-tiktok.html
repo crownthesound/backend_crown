@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>TikTok Configuration Debug</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        max-width: 800px;
+        margin: 50px auto;
+        padding: 20px;
+        line-height: 1.6;
+      }
+      .config-box {
+        background: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        padding: 20px;
+        margin: 20px 0;
+      }
+      .error {
+        color: #dc3545;
+        background: #f8d7da;
+      }
+      .success {
+        color: #155724;
+        background: #d4edda;
+      }
+      .info {
+        color: #0c5460;
+        background: #d1ecf1;
+      }
+      .debug-button {
+        background: #007bff;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 4px;
+        cursor: pointer;
+        margin: 5px;
+      }
+      .copy-btn {
+        background: #28a745;
+        color: white;
+        border: none;
+        padding: 5px 10px;
+        border-radius: 3px;
+        cursor: pointer;
+        font-size: 12px;
+      }
+      pre {
+        background: #f8f9fa;
+        padding: 10px;
+        border-radius: 4px;
+        overflow-x: auto;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>🔧 TikTok Configuration Debug</h1>
+
+    <div class="config-box info">
+      <h3>📋 Current Backend Configuration</h3>
+      <button onclick="fetchBackendConfig()" class="debug-button">
+        Fetch Backend Config
+      </button>
+      <div id="backendConfig"></div>
+    </div>
+
+    <div class="config-box">
+      <h3>🎯 Expected TikTok Developer Console Settings</h3>
+      <p><strong>App Basic Information:</strong></p>
+      <ul>
+        <li>
+          Client Key: <code>sbaw1irxpr7r1jnduo</code>
+          <button onclick="copyText('sbaw1irxpr7r1jnduo')" class="copy-btn">
+            Copy
+          </button>
+        </li>
+        <li>
+          Client Secret: <code>0CKSlBu8OSISgNzbmeW0mnPgbpwzgeEn</code>
+          <button
+            onclick="copyText('0CKSlBu8OSISgNzbmeW0mnPgbpwzgeEn')"
+            class="copy-btn"
+          >
+            Copy
+          </button>
+        </li>
+      </ul>
+
+      <p><strong>Products → Login Kit → Redirect URI:</strong></p>
+      <ul>
+        <li>Remove all existing URIs</li>
+        <li>
+          Add only:
+          <code
+            >https://4f6e-105-156-68-47.ngrok-free.app/api/v1/tiktok/auth/callback</code
+          >
+          <button
+            onclick="copyText('https://4f6e-105-156-68-47.ngrok-free.app/api/v1/tiktok/auth/callback')"
+            class="copy-btn"
+          >
+            Copy
+          </button>
+        </li>
+      </ul>
+
+      <p><strong>Web/Desktop URL:</strong></p>
+      <ul>
+        <li>
+          <code>https://4f6e-105-156-68-47.ngrok-free.app</code>
+          <button
+            onclick="copyText('https://4f6e-105-156-68-47.ngrok-free.app')"
+            class="copy-btn"
+          >
+            Copy
+          </button>
+        </li>
+      </ul>
+    </div>
+
+    <div class="config-box">
+      <h3>🧪 Test Authentication</h3>
+      <button onclick="testAuth()" class="debug-button">
+        Test TikTok Auth URL
+      </button>
+      <div id="authTest"></div>
+    </div>
+
+    <div class="config-box">
+      <h3>✅ Verification Checklist</h3>
+      <ul>
+        <li>☐ Client Key matches exactly in TikTok Developer Console</li>
+        <li>☐ Client Secret matches exactly in TikTok Developer Console</li>
+        <li>☐ Only ONE redirect URI configured in TikTok</li>
+        <li>☐ Redirect URI matches exactly (including https://)</li>
+        <li>☐ Web/Desktop URL points to ngrok domain</li>
+        <li>☐ App is in correct environment (Sandbox vs Production)</li>
+        <li>☐ TikTok app status is "Published" or "In Review"</li>
+      </ul>
+    </div>
+
+    <div class="config-box error">
+      <h3>🚨 Common Issues</h3>
+      <ul>
+        <li>
+          <strong>Wrong App:</strong> Make sure you're configuring the correct
+          app in TikTok Developer Console
+        </li>
+        <li>
+          <strong>Environment Mismatch:</strong> Check if you're using Sandbox
+          vs Production keys
+        </li>
+        <li>
+          <strong>App Status:</strong> App might need to be published or
+          approved
+        </li>
+        <li>
+          <strong>Region Restrictions:</strong> Some TikTok features are
+          region-restricted
+        </li>
+        <li>
+          <strong>Case Sensitivity:</strong> Client keys are case-sensitive
+        </li>
+      </ul>
+    </div>
+
+    <script>
+      async function fetchBackendConfig() {
+        const configDiv = document.getElementById("backendConfig");
+        configDiv.innerHTML = "<p>Fetching...</p>";
+
+        try {
+          const response = await fetch("/api/v1/tiktok/auth");
+          const data = await response.json();
+
+          if (data.status === "success" && data.data.authUrl) {
+            const url = new URL(data.data.authUrl);
+            const clientKey = url.searchParams.get("client_key");
+            const redirectUri = url.searchParams.get("redirect_uri");
+
+            configDiv.innerHTML = `
+                        <h4>✅ Backend Response:</h4>
+                        <p><strong>Client Key:</strong> <code>${clientKey}</code></p>
+                        <p><strong>Redirect URI:</strong> <code>${decodeURIComponent(
+                          redirectUri
+                        )}</code></p>
+                        <h4>🔗 Full Auth URL:</h4>
+                        <pre>${data.data.authUrl}</pre>
+                    `;
+          } else {
+            configDiv.innerHTML = `<p class="error">❌ Error: ${
+              data.message || "Invalid response"
+            }</p>`;
+          }
+        } catch (error) {
+          configDiv.innerHTML = `<p class="error">❌ Error: ${error.message}</p>`;
+        }
+      }
+
+      async function testAuth() {
+        const testDiv = document.getElementById("authTest");
+        testDiv.innerHTML = "<p>Testing...</p>";
+
+        try {
+          const response = await fetch("/api/v1/tiktok/auth");
+          const data = await response.json();
+
+          if (data.status === "success" && data.data.authUrl) {
+            testDiv.innerHTML = `
+                        <p class="success">✅ Auth URL generated successfully!</p>
+                        <p><a href="${data.data.authUrl}" target="_blank" class="debug-button">🚀 Test TikTok Login</a></p>
+                        <p><small>This will open TikTok authorization in a new tab</small></p>
+                    `;
+          } else {
+            testDiv.innerHTML = `<p class="error">❌ Failed to generate auth URL: ${
+              data.message || "Unknown error"
+            }</p>`;
+          }
+        } catch (error) {
+          testDiv.innerHTML = `<p class="error">❌ Error: ${error.message}</p>`;
+        }
+      }
+
+      function copyText(text) {
+        navigator.clipboard.writeText(text).then(() => {
+          // Simple feedback
+          event.target.textContent = "Copied!";
+          setTimeout(() => {
+            event.target.textContent = "Copy";
+          }, 2000);
+        });
+      }
+
+      // Auto-fetch config on load
+      window.addEventListener("load", fetchBackendConfig);
+    </script>
+  </body>
+</html>

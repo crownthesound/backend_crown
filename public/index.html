@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Crown TikTok Integration Test</title>
+    <style>
+      body {
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 20px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        color: #333;
+      }
+
+      .container {
+        background: white;
+        border-radius: 15px;
+        padding: 30px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+      }
+
+      h1 {
+        color: #ff0050;
+        text-align: center;
+        margin-bottom: 30px;
+        font-size: 2.5em;
+      }
+
+      .auth-section {
+        text-align: center;
+        margin-bottom: 40px;
+        padding: 20px;
+        border: 2px dashed #ff0050;
+        border-radius: 10px;
+      }
+
+      .btn {
+        background: linear-gradient(45deg, #ff0050, #ff4081);
+        color: white;
+        border: none;
+        padding: 15px 30px;
+        border-radius: 25px;
+        cursor: pointer;
+        font-size: 16px;
+        font-weight: bold;
+        transition: all 0.3s ease;
+        text-decoration: none;
+        display: inline-block;
+        margin: 10px;
+      }
+
+      .btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(255, 0, 80, 0.4);
+      }
+
+      .btn:disabled {
+        background: #ccc;
+        cursor: not-allowed;
+        transform: none;
+      }
+
+      .user-info {
+        background: #f8f9fa;
+        padding: 20px;
+        border-radius: 10px;
+        margin-bottom: 30px;
+        display: none;
+      }
+
+      .user-avatar {
+        width: 80px;
+        height: 80px;
+        border-radius: 50%;
+        margin-right: 20px;
+        vertical-align: middle;
+      }
+
+      .videos-section {
+        display: none;
+      }
+
+      .videos-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        gap: 20px;
+        margin-top: 20px;
+      }
+
+      .video-card {
+        background: #f8f9fa;
+        border-radius: 10px;
+        padding: 15px;
+        border: 1px solid #dee2e6;
+      }
+
+      .video-thumbnail {
+        width: 100%;
+        height: 200px;
+        object-fit: cover;
+        border-radius: 8px;
+        margin-bottom: 10px;
+      }
+
+      .video-title {
+        font-weight: bold;
+        margin-bottom: 5px;
+      }
+
+      .video-stats {
+        color: #666;
+        font-size: 14px;
+      }
+
+      .upload-section {
+        background: #e8f5e8;
+        padding: 20px;
+        border-radius: 10px;
+        margin-top: 30px;
+        display: none;
+      }
+
+      .form-group {
+        margin-bottom: 20px;
+      }
+
+      .form-group label {
+        display: block;
+        margin-bottom: 5px;
+        font-weight: bold;
+      }
+
+      .form-group input,
+      .form-group textarea {
+        width: 100%;
+        padding: 10px;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+        font-size: 16px;
+      }
+
+      .form-group textarea {
+        height: 100px;
+        resize: vertical;
+      }
+
+      .error {
+        color: #dc3545;
+        background: #f8d7da;
+        padding: 10px;
+        border-radius: 5px;
+        margin: 10px 0;
+      }
+
+      .success {
+        color: #155724;
+        background: #d4edda;
+        padding: 10px;
+        border-radius: 5px;
+        margin: 10px 0;
+      }
+
+      .loading {
+        text-align: center;
+        padding: 20px;
+      }
+
+      .spinner {
+        border: 4px solid #f3f3f3;
+        border-top: 4px solid #ff0050;
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        animation: spin 1s linear infinite;
+        margin: 0 auto;
+      }
+
+      @keyframes spin {
+        0% {
+          transform: rotate(0deg);
+        }
+        100% {
+          transform: rotate(360deg);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>👑 Crown TikTok Integration Test</h1>
+
+      <!-- Authentication Section -->
+      <div class="auth-section" id="authSection">
+        <h2>Connect Your TikTok Account</h2>
+        <p>Login with TikTok to view and manage your videos</p>
+
+        <!-- Using a direct link instead of a button to avoid any potential form submission issues -->
+        <a href="#" class="btn" id="tiktokLoginLink">
+          🎵 Connect TikTok Account
+        </a>
+
+        <div id="authError" class="error" style="display: block">
+          Click the button above to connect your TikTok account
+        </div>
+      </div>
+
+      <!-- User Info Section -->
+      <div class="user-info" id="userInfo">
+        <h3>Welcome back!</h3>
+        <div id="userDetails"></div>
+        <button class="btn" onclick="logout()">Logout</button>
+      </div>
+
+      <!-- Videos Section -->
+      <div class="videos-section" id="videosSection">
+        <h3>Your TikTok Videos</h3>
+        <button class="btn" onclick="loadVideos()">🔄 Refresh Videos</button>
+        <div id="videosLoading" class="loading" style="display: none">
+          <div class="spinner"></div>
+          <p>Loading your videos...</p>
+        </div>
+        <div id="videosGrid" class="videos-grid"></div>
+      </div>
+
+      <!-- Upload Section -->
+      <div class="upload-section" id="uploadSection">
+        <h3>📤 Upload New Video</h3>
+        <form id="uploadForm">
+          <div class="form-group">
+            <label for="videoFile">Select Video File:</label>
+            <input type="file" id="videoFile" accept="video/*" required />
+          </div>
+          <div class="form-group">
+            <label for="videoTitle">Video Title:</label>
+            <input
+              type="text"
+              id="videoTitle"
+              placeholder="Enter video title"
+              required
+            />
+          </div>
+          <div class="form-group">
+            <label for="videoDescription">Description:</label>
+            <textarea
+              id="videoDescription"
+              placeholder="Enter video description"
+            ></textarea>
+          </div>
+          <div class="form-group">
+            <label for="videoTags">Tags (comma separated):</label>
+            <input type="text" id="videoTags" placeholder="tag1, tag2, tag3" />
+          </div>
+          <button type="submit" class="btn">🚀 Upload to TikTok</button>
+        </form>
+        <div id="uploadStatus"></div>
+      </div>
+    </div>
+
+    <script>
+      const API_BASE = "http://localhost:3001/api/v1";
+      let currentUser = null;
+      let tiktokToken = null;
+
+      // Set up direct event handlers when the DOM is ready
+      document.addEventListener("DOMContentLoaded", function () {
+        console.log("🔥 DOM Content Loaded");
+
+        // Set up the TikTok login link
+        const loginLink = document.getElementById("tiktokLoginLink");
+        if (loginLink) {
+          loginLink.addEventListener("click", function (e) {
+            console.log("🔥 TikTok login link clicked");
+            e.preventDefault();
+
+            // Get the auth URL directly
+            getTikTokAuthUrl();
+
+            return false;
+          });
+          console.log("🔥 TikTok login link event listener added");
+        } else {
+          console.error("🔥 TikTok login link not found!");
+        }
+
+        // Prevent any form submissions
+        document.addEventListener("submit", function (e) {
+          console.log("🔥 Form submission prevented:", e.target);
+          e.preventDefault();
+          return false;
+        });
+      });
+
+      // Check if user is returning from TikTok OAuth or was previously logged in
+      window.addEventListener("load", function () {
+        console.log("🔥 Page loaded, setting up event listeners");
+
+        // Set up the TikTok login button event listener
+        const loginBtn = document.getElementById("tiktokLoginBtn");
+        if (loginBtn) {
+          loginBtn.addEventListener("click", function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            console.log("🔥 TikTok login button clicked");
+            loginWithTikTok();
+          });
+          console.log("🔥 TikTok login button event listener added");
+        }
+
+        // First, check for OAuth callback
+        const urlParams = new URLSearchParams(window.location.search);
+        const code = urlParams.get("code");
+        const error = urlParams.get("error");
+
+        console.log("🔥 URL params - code:", code, "error:", error);
+
+        if (error) {
+          showError("TikTok authentication failed: " + error);
+          return;
+        }
+
+        if (code) {
+          console.log("🔥 Found OAuth code, handling callback");
+          handleTikTokCallback(code);
+          return;
+        }
+
+        // If no OAuth callback, check if user was previously logged in
+        const savedToken = localStorage.getItem("tiktokToken");
+        const savedUser = localStorage.getItem("tiktokUser");
+
+        if (savedToken && savedUser) {
+          console.log("🔥 Found saved user, restoring session");
+          tiktokToken = savedToken;
+          currentUser = JSON.parse(savedUser);
+          showUserInfo();
+          loadVideos();
+        } else {
+          console.log("🔥 No saved user found, showing login");
+        }
+      });
+
+      // New direct approach to get TikTok auth URL
+      async function getTikTokAuthUrl() {
+        console.log("🔥 getTikTokAuthUrl function called");
+
+        const loginLink = document.getElementById("tiktokLoginLink");
+        const authError = document.getElementById("authError");
+
+        if (!loginLink) {
+          console.error("🔥 Login link not found!");
+          return;
+        }
+
+        const originalText = loginLink.innerHTML;
+
+        try {
+          // Show loading state
+          loginLink.innerHTML = "🔄 Connecting...";
+          authError.textContent = "Connecting to TikTok...";
+          authError.style.display = "block";
+
+          console.log(
+            "🔥 Fetching TikTok auth URL from:",
+            `${API_BASE}/tiktok/auth`
+          );
+
+          // Make simple fetch request without custom headers to avoid CORS issues
+          const response = await fetch(`${API_BASE}/tiktok/auth`, {
+            method: "GET",
+            headers: {
+              Accept: "application/json",
+            },
+            mode: "cors",
+          });
+
+          console.log("🔥 Response received");
+          console.log("🔥 Response status:", response.status);
+          console.log("🔥 Response ok:", response.ok);
+
+          if (!response.ok) {
+            const errorText = await response.text();
+            console.error("🔥 Response error text:", errorText);
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+
+          const responseText = await response.text();
+          console.log("🔥 Raw response text:", responseText);
+
+          // Parse JSON safely
+          let data;
+          try {
+            data = JSON.parse(responseText);
+          } catch (e) {
+            console.error("🔥 JSON parse error:", e);
+            throw new Error("Invalid JSON response");
+          }
+
+          console.log("🔥 Parsed response data:", data);
+
+          if (data.status === "success" && data.data && data.data.authUrl) {
+            const authUrl = data.data.authUrl;
+
+            authError.textContent = "Success! Redirecting to TikTok...";
+            loginLink.innerHTML = "✅ Redirecting...";
+
+            console.log("🔥 Auth URL received:", authUrl);
+
+            // Use a direct window.open to avoid any page refresh issues
+            console.log("🔥 Opening TikTok auth URL in new tab");
+            window.open(authUrl, "_self");
+          } else {
+            console.error("🔥 Invalid response structure:", data);
+            throw new Error(data.message || "Invalid response format");
+          }
+        } catch (error) {
+          console.error("🔥 TikTok auth error:", error);
+          authError.textContent = "Error: " + error.message;
+
+          // Reset link on error
+          loginLink.innerHTML = originalText;
+        }
+      }
+
+      async function handleTikTokCallback(code) {
+        try {
+          showLoading("Processing TikTok authentication...");
+
+          const response = await fetch(
+            `${API_BASE}/tiktok/auth/callback?code=${code}`
+          );
+          const data = await response.json();
+
+          if (data.status === "success") {
+            tiktokToken = data.data.tokenData.access_token;
+            currentUser = data.data.userInfo.data.user;
+
+            // Store token in localStorage for this demo
+            localStorage.setItem("tiktokToken", tiktokToken);
+            localStorage.setItem("tiktokUser", JSON.stringify(currentUser));
+
+            showUserInfo();
+            loadVideos();
+          } else {
+            showError("Failed to complete TikTok authentication");
+          }
+        } catch (error) {
+          showError("Authentication error: " + error.message);
+        } finally {
+          hideLoading();
+          // Clean URL
+          window.history.replaceState(
+            {},
+            document.title,
+            window.location.pathname
+          );
+        }
+      }
+
+      function showUserInfo() {
+        const authSection = document.getElementById("authSection");
+        const userInfo = document.getElementById("userInfo");
+        const videosSection = document.getElementById("videosSection");
+        const uploadSection = document.getElementById("uploadSection");
+
+        authSection.style.display = "none";
+        userInfo.style.display = "block";
+        videosSection.style.display = "block";
+        uploadSection.style.display = "block";
+
+        const userDetails = document.getElementById("userDetails");
+        userDetails.innerHTML = `
+                <img src="${
+                  currentUser.avatar_url_100
+                }" alt="Avatar" class="user-avatar">
+                <strong>${currentUser.display_name}</strong>
+                <p>@${currentUser.open_id}</p>
+                <p>👥 ${currentUser.follower_count} followers | 📹 ${
+          currentUser.video_count
+        } videos</p>
+                ${
+                  currentUser.is_verified
+                    ? '<span style="color: #1DA1F2;">✓ Verified</span>'
+                    : ""
+                }
+            `;
+      }
+
+      async function loadVideos() {
+        if (!tiktokToken) {
+          showError("No TikTok token available");
+          return;
+        }
+
+        const videosLoading = document.getElementById("videosLoading");
+        const videosGrid = document.getElementById("videosGrid");
+
+        videosLoading.style.display = "block";
+        videosGrid.innerHTML = "";
+
+        try {
+          const response = await fetch(`${API_BASE}/tiktok/videos`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              tiktokAccessToken: tiktokToken,
+            }),
+          });
+
+          const data = await response.json();
+
+          if (data.status === "success") {
+            displayVideos(data.data.videos || []);
+          } else {
+            showError(
+              "Failed to load videos: " + (data.message || "Unknown error")
+            );
+          }
+        } catch (error) {
+          showError("Error loading videos: " + error.message);
+        } finally {
+          videosLoading.style.display = "none";
+        }
+      }
+
+      function displayVideos(videos) {
+        const videosGrid = document.getElementById("videosGrid");
+
+        if (videos.length === 0) {
+          videosGrid.innerHTML =
+            '<p style="text-align: center; color: #666;">No videos found</p>';
+          return;
+        }
+
+        videosGrid.innerHTML = videos
+          .map(
+            (video) => `
+                <div class="video-card">
+                    <img src="${
+                      video.cover_image_url
+                    }" alt="Video thumbnail" class="video-thumbnail">
+                    <div class="video-title">${video.title || "Untitled"}</div>
+                    <div class="video-stats">
+                        👁️ ${formatNumber(video.view_count)} | 
+                        ❤️ ${formatNumber(video.like_count)} | 
+                        💬 ${formatNumber(video.comment_count)}
+                    </div>
+                    <p style="font-size: 12px; color: #888; margin-top: 5px;">
+                        ${video.video_description || "No description"}
+                    </p>
+                    <a href="${
+                      video.share_url
+                    }" target="_blank" class="btn" style="font-size: 12px; padding: 8px 16px;">
+                        View on TikTok
+                    </a>
+                </div>
+            `
+          )
+          .join("");
+      }
+
+      document
+        .getElementById("uploadForm")
+        .addEventListener("submit", async function (e) {
+          e.preventDefault();
+
+          if (!tiktokToken) {
+            showError("Please login with TikTok first");
+            return;
+          }
+
+          const formData = new FormData();
+          const videoFile = document.getElementById("videoFile").files[0];
+          const title = document.getElementById("videoTitle").value;
+          const description = document.getElementById("videoDescription").value;
+          const tags = document.getElementById("videoTags").value;
+
+          if (!videoFile) {
+            showError("Please select a video file");
+            return;
+          }
+
+          const uploadStatus = document.getElementById("uploadStatus");
+          uploadStatus.innerHTML =
+            '<div class="loading"><div class="spinner"></div><p>Uploading video...</p></div>';
+
+          try {
+            // Note: This is a simplified upload - real TikTok upload requires multiple steps
+            const videoData = {
+              title: title,
+              description: description,
+              tags: tags
+                .split(",")
+                .map((tag) => tag.trim())
+                .filter((tag) => tag),
+              // In a real implementation, you'd upload the file to a storage service first
+              video_url: "placeholder_url",
+            };
+
+            const response = await fetch(`${API_BASE}/tiktok/videos`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                tiktokAccessToken: tiktokToken,
+                videoData: videoData,
+              }),
+            });
+
+            const data = await response.json();
+
+            if (data.status === "success") {
+              uploadStatus.innerHTML =
+                '<div class="success">Video uploaded successfully!</div>';
+              document.getElementById("uploadForm").reset();
+              // Refresh videos list
+              setTimeout(() => loadVideos(), 2000);
+            } else {
+              uploadStatus.innerHTML = `<div class="error">Upload failed: ${
+                data.message || "Unknown error"
+              }</div>`;
+            }
+          } catch (error) {
+            uploadStatus.innerHTML = `<div class="error">Upload error: ${error.message}</div>`;
+          }
+        });
+
+      function logout() {
+        localStorage.removeItem("tiktokToken");
+        localStorage.removeItem("tiktokUser");
+        currentUser = null;
+        tiktokToken = null;
+
+        // Reset UI
+        document.getElementById("authSection").style.display = "block";
+        document.getElementById("userInfo").style.display = "none";
+        document.getElementById("videosSection").style.display = "none";
+        document.getElementById("uploadSection").style.display = "none";
+        document.getElementById("videosGrid").innerHTML = "";
+      }
+
+      function showError(message) {
+        const errorDiv = document.getElementById("authError");
+        errorDiv.textContent = message;
+        errorDiv.style.display = "block";
+        // Make errors more visible for debugging
+        console.log("ERROR:", message);
+        // Don't auto-hide errors during debugging
+        // setTimeout(() => (errorDiv.style.display = "none"), 5000);
+      }
+
+      function showLoading(message) {
+        // You can implement a global loading indicator here
+        console.log("Loading:", message);
+      }
+
+      function hideLoading() {
+        // Hide global loading indicator
+      }
+
+      function formatNumber(num) {
+        if (num >= 1000000) {
+          return (num / 1000000).toFixed(1) + "M";
+        } else if (num >= 1000) {
+          return (num / 1000).toFixed(1) + "K";
+        }
+        return num.toString();
+      }
+    </script>
+  </body>
+</html>

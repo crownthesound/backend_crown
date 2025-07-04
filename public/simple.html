@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>TikTok Direct Link</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        max-width: 600px;
+        margin: 50px auto;
+        padding: 20px;
+        text-align: center;
+      }
+      h1 {
+        color: #ff0050;
+      }
+      .button {
+        display: inline-block;
+        background: #ff0050;
+        color: white;
+        padding: 15px 30px;
+        text-decoration: none;
+        border-radius: 4px;
+        font-weight: bold;
+        font-size: 18px;
+        margin: 20px 0;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Connect to TikTok</h1>
+    <p>Click the button below to connect your TikTok account:</p>
+
+    <!-- Direct link to TikTok auth URL -->
+    <a
+      href="https://www.tiktok.com/v2/auth/authorize/?client_key=aw90wnzt9bc9jq36&scope=user.info.basic,video.list,video.upload&response_type=code&redirect_uri=http%3A%2F%2Flocalhost%3A3001%2Fapi%2Fv1%2Ftiktok%2Fauth%2Fcallback&state=Y2Nzamx1eHB1NzpsdWtoQ2ZiMS1aOVN3MTFQRmlub2xpLVRyQ0IteDgyM0RjSzNHS0JkNjBn&code_challenge=DGOV_kuY1l-ngMzfC3GS5aAT6zw5XA1s1KsWbqSu-RQ&code_challenge_method=S256"
+      class="button"
+    >
+      Connect TikTok Account
+    </a>
+
+    <p>This will open the TikTok authorization page.</p>
+  </body>
+</html>

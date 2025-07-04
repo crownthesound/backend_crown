@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Connect to TikTok</title>
+    <style>
+      body {
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 40px 20px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        text-align: center;
+      }
+
+      .container {
+        background: rgba(255, 255, 255, 0.9);
+        border-radius: 15px;
+        padding: 40px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+        color: #333;
+        width: 100%;
+      }
+
+      h1 {
+        color: #ff0050;
+        margin-bottom: 20px;
+      }
+
+      p {
+        margin-bottom: 30px;
+        font-size: 18px;
+        line-height: 1.6;
+      }
+
+      .btn {
+        display: inline-block;
+        background: linear-gradient(45deg, #ff0050, #ff4081);
+        color: white;
+        text-decoration: none;
+        padding: 15px 30px;
+        border-radius: 30px;
+        font-weight: bold;
+        font-size: 18px;
+        transition: transform 0.3s, box-shadow 0.3s;
+        margin: 10px;
+        border: none;
+        cursor: pointer;
+      }
+
+      .btn:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 10px 20px rgba(255, 0, 80, 0.4);
+      }
+
+      .note {
+        margin-top: 30px;
+        font-size: 14px;
+        opacity: 0.8;
+      }
+
+      #status {
+        margin-top: 20px;
+        padding: 10px;
+        border-radius: 5px;
+        display: none;
+      }
+
+      .loading {
+        display: inline-block;
+        width: 20px;
+        height: 20px;
+        border: 3px solid rgba(255, 255, 255, 0.3);
+        border-radius: 50%;
+        border-top-color: #fff;
+        animation: spin 1s ease-in-out infinite;
+        margin-right: 10px;
+        vertical-align: middle;
+      }
+
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      #debug {
+        margin-top: 20px;
+        padding: 10px;
+        border-radius: 5px;
+        background-color: #f8f9fa;
+        border: 1px solid #ddd;
+        text-align: left;
+        font-family: monospace;
+        font-size: 12px;
+        color: #333;
+        max-height: 200px;
+        overflow-y: auto;
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>👑 Connect Your TikTok Account</h1>
+
+      <p>Click the button below to connect your TikTok account to Crown.</p>
+
+      <!-- Simple button that will redirect directly -->
+      <button id="connectBtn" class="btn">🎵 Connect TikTok Account</button>
+
+      <div id="status"></div>
+
+      <div id="debug"></div>
+
+      <p class="note">
+        You will be redirected to TikTok to authorize access to your account.
+      </p>
+    </div>
+
+    <script>
+      document.addEventListener("DOMContentLoaded", function () {
+        const connectBtn = document.getElementById("connectBtn");
+        const status = document.getElementById("status");
+        const debug = document.getElementById("debug");
+
+        // Show debug panel in development
+        const showDebug = true;
+        if (showDebug) {
+          debug.style.display = "block";
+          logDebug("Debug mode enabled");
+        }
+
+        function logDebug(message) {
+          if (showDebug) {
+            const timestamp = new Date()
+              .toISOString()
+              .split("T")[1]
+              .split(".")[0];
+            debug.innerHTML += `<div>[${timestamp}] ${message}</div>`;
+            debug.scrollTop = debug.scrollHeight;
+            console.log(`[DEBUG] ${message}`);
+          }
+        }
+
+        connectBtn.addEventListener("click", async function () {
+          // Disable button and show loading
+          connectBtn.disabled = true;
+          connectBtn.innerHTML = '<span class="loading"></span> Connecting...';
+          status.style.display = "block";
+          status.style.backgroundColor = "#f8d7da";
+          status.style.color = "#721c24";
+          status.textContent = "Getting authorization URL...";
+
+          logDebug("Button clicked, fetching auth URL...");
+
+          try {
+            // Direct fetch with absolute URL to work from any origin
+            const apiUrl = "http://localhost:3001/api/v1/tiktok/auth";
+            logDebug(`Fetching from: ${apiUrl}`);
+
+            const response = await fetch(apiUrl);
+            logDebug(`Response status: ${response.status}`);
+
+            if (!response.ok) {
+              const errorText = await response.text();
+              logDebug(`Error response: ${errorText}`);
+              throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const responseText = await response.text();
+            logDebug(`Response text: ${responseText}`);
+
+            const data = JSON.parse(responseText);
+            logDebug(`Parsed data: ${JSON.stringify(data)}`);
+
+            if (data.status === "success" && data.data && data.data.authUrl) {
+              const authUrl = data.data.authUrl;
+              logDebug(`Auth URL received: ${authUrl}`);
+
+              status.style.backgroundColor = "#d4edda";
+              status.style.color = "#155724";
+              status.textContent = "Success! Redirecting to TikTok...";
+
+              // Open in new window to avoid any issues
+              logDebug("Opening TikTok auth URL in new window");
+              window.open(authUrl, "_blank");
+
+              // Also update button to be a direct link
+              connectBtn.disabled = false;
+              connectBtn.innerHTML = "🎵 Connect TikTok Account";
+              const directLink = document.createElement("a");
+              directLink.href = authUrl;
+              directLink.target = "_blank";
+              directLink.className = "btn";
+              directLink.style.marginTop = "20px";
+              directLink.innerHTML = "🔗 Open TikTok Auth (Direct Link)";
+              connectBtn.parentNode.insertBefore(directLink, status);
+            } else {
+              logDebug("Invalid response structure");
+              throw new Error("Invalid response from server");
+            }
+          } catch (error) {
+            logDebug(`Error: ${error.message}`);
+            console.error("Error:", error);
+            status.textContent = `Error: ${error.message}`;
+
+            // Re-enable button on error
+            connectBtn.disabled = false;
+            connectBtn.innerHTML = "🎵 Connect TikTok Account";
+          }
+        });
+      });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TikTok Configuration Tester</title>
+    <style>
+      body {
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 40px 20px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        color: white;
+      }
+
+      .container {
+        background: rgba(255, 255, 255, 0.9);
+        border-radius: 15px;
+        padding: 40px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+        color: #333;
+      }
+
+      h1 {
+        color: #ff0050;
+        margin-bottom: 20px;
+      }
+
+      h2 {
+        margin-top: 30px;
+        color: #ff0050;
+      }
+
+      pre {
+        background: #f8f9fa;
+        padding: 15px;
+        border-radius: 5px;
+        overflow-x: auto;
+        margin: 20px 0;
+      }
+
+      .config-item {
+        margin-bottom: 15px;
+      }
+
+      label {
+        display: block;
+        font-weight: bold;
+        margin-bottom: 5px;
+      }
+
+      input[type="text"] {
+        width: 100%;
+        padding: 10px;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+        font-size: 16px;
+        margin-bottom: 5px;
+      }
+
+      .btn {
+        display: inline-block;
+        background: linear-gradient(45deg, #ff0050, #ff4081);
+        color: white;
+        text-decoration: none;
+        padding: 10px 20px;
+        border-radius: 5px;
+        font-weight: bold;
+        border: none;
+        cursor: pointer;
+        margin-top: 10px;
+      }
+
+      .btn:hover {
+        opacity: 0.9;
+      }
+
+      #results {
+        margin-top: 20px;
+        padding: 15px;
+        border-radius: 5px;
+        background-color: #f8f9fa;
+        border: 1px solid #ddd;
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>TikTok Configuration Tester</h1>
+
+      <div class="config-item">
+        <label>Current Redirect URI:</label>
+        <pre id="currentRedirectUri">
+http://localhost:3001/api/v1/tiktok/auth/callback</pre
+        >
+      </div>
+
+      <h2>Test Different Redirect URIs</h2>
+      <p>Enter a redirect URI to test if it works with your TikTok app:</p>
+
+      <div class="config-item">
+        <label for="redirectUri">Redirect URI to Test:</label>
+        <input
+          type="text"
+          id="redirectUri"
+          placeholder="Enter redirect URI to test"
+          value="http://localhost:3001/api/v1/tiktok/auth/callback"
+        />
+      </div>
+
+      <button id="testBtn" class="btn">Test This Redirect URI</button>
+
+      <div id="results"></div>
+
+      <h2>Common Redirect URIs to Try</h2>
+      <ul>
+        <li>
+          <a
+            href="#"
+            class="test-uri"
+            data-uri="http://localhost:3001/api/v1/tiktok/auth/callback"
+            >http://localhost:3001/api/v1/tiktok/auth/callback</a
+          >
+          (Current)
+        </li>
+        <li>
+          <a
+            href="#"
+            class="test-uri"
+            data-uri="http://localhost:3001/api/v1/auth/tiktok/callback"
+            >http://localhost:3001/api/v1/auth/tiktok/callback</a
+          >
+        </li>
+        <li>
+          <a
+            href="#"
+            class="test-uri"
+            data-uri="http://localhost:3001/tiktok/callback"
+            >http://localhost:3001/tiktok/callback</a
+          >
+        </li>
+        <li>
+          <a href="#" class="test-uri" data-uri="http://localhost:3001/callback"
+            >http://localhost:3001/callback</a
+          >
+        </li>
+      </ul>
+
+      <h2>TikTok Developer Documentation</h2>
+      <p>
+        For more information, visit the
+        <a
+          href="https://developers.tiktok.com/doc/login-kit-web"
+          target="_blank"
+          style="color: #ff0050"
+          >TikTok Developer Documentation</a
+        >.
+      </p>
+    </div>
+
+    <script>
+      document.addEventListener("DOMContentLoaded", function () {
+        const testBtn = document.getElementById("testBtn");
+        const redirectUriInput = document.getElementById("redirectUri");
+        const resultsDiv = document.getElementById("results");
+
+        // Set current redirect URI from backend
+        fetch("http://localhost:3001/api/v1/tiktok/auth")
+          .then((response) => response.json())
+          .then((data) => {
+            const url = new URL(data.data.authUrl);
+            const redirectUri = url.searchParams.get("redirect_uri");
+            document.getElementById("currentRedirectUri").textContent =
+              redirectUri || "Not found";
+          })
+          .catch((error) => {
+            document.getElementById("currentRedirectUri").textContent =
+              "Error fetching current config";
+            console.error("Error:", error);
+          });
+
+        // Test button click handler
+        testBtn.addEventListener("click", function () {
+          testRedirectUri(redirectUriInput.value);
+        });
+
+        // Test links click handler
+        document.querySelectorAll(".test-uri").forEach((link) => {
+          link.addEventListener("click", function (e) {
+            e.preventDefault();
+            const uri = this.getAttribute("data-uri");
+            redirectUriInput.value = uri;
+            testRedirectUri(uri);
+          });
+        });
+
+        function testRedirectUri(uri) {
+          resultsDiv.style.display = "block";
+          resultsDiv.innerHTML =
+            "<p>Testing redirect URI: " + uri + "</p><p>Please wait...</p>";
+
+          // Create a form to update the .env file
+          const formData = new FormData();
+          formData.append("redirectUri", uri);
+
+          // Send the request to update the redirect URI
+          fetch("http://localhost:3001/api/v1/tiktok/update-redirect-uri", {
+            method: "POST",
+            body: formData,
+          })
+            .then((response) => response.json())
+            .then((data) => {
+              if (data.status === "success") {
+                resultsDiv.innerHTML =
+                  "<p>Redirect URI updated successfully!</p>" +
+                  "<p>Now test it by clicking this link:</p>" +
+                  '<p><a href="' +
+                  data.data.authUrl +
+                  '" target="_blank" class="btn">Test TikTok Login</a></p>';
+              } else {
+                resultsDiv.innerHTML =
+                  "<p>Error updating redirect URI: " + data.message + "</p>";
+              }
+            })
+            .catch((error) => {
+              resultsDiv.innerHTML =
+                "<p>Error: " +
+                error.message +
+                "</p>" +
+                "<p>You may need to manually update your .env file with:</p>" +
+                "<pre>TIKTOK_REDIRECT_URI=" +
+                uri +
+                "</pre>";
+              console.error("Error:", error);
+            });
+        }
+      });
+    </script>
+  </body>
+</html>

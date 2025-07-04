@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Find Your TikTok Redirect URI</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        max-width: 800px;
+        margin: 50px auto;
+        padding: 20px;
+        line-height: 1.6;
+      }
+      h1,
+      h2 {
+        color: #ff0050;
+      }
+      .step {
+        margin-bottom: 30px;
+        padding: 15px;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+        background-color: #f9f9f9;
+      }
+      .step-number {
+        display: inline-block;
+        width: 30px;
+        height: 30px;
+        background-color: #ff0050;
+        color: white;
+        text-align: center;
+        line-height: 30px;
+        border-radius: 50%;
+        margin-right: 10px;
+      }
+      pre {
+        background-color: #f0f0f0;
+        padding: 10px;
+        border-radius: 5px;
+        overflow-x: auto;
+      }
+      .button {
+        display: inline-block;
+        background: #ff0050;
+        color: white;
+        padding: 10px 20px;
+        text-decoration: none;
+        border-radius: 4px;
+        font-weight: bold;
+        margin-top: 10px;
+      }
+      img {
+        max-width: 100%;
+        border: 1px solid #ddd;
+        margin: 10px 0;
+      }
+      .uri-test {
+        margin-top: 40px;
+        padding: 20px;
+        border: 2px solid #ff0050;
+        border-radius: 5px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Find Your TikTok Redirect URI</h1>
+    <p>
+      You're getting a <strong>"redirect_uri"</strong> error because the URI
+      we're using doesn't match what's configured in your TikTok Developer
+      account. Follow these steps to find the correct URI:
+    </p>
+
+    <div class="step">
+      <span class="step-number">1</span>
+      <strong>Log in to your TikTok Developer account</strong>
+      <p>
+        Go to
+        <a href="https://developers.tiktok.com/" target="_blank"
+          >https://developers.tiktok.com/</a
+        >
+        and log in.
+      </p>
+    </div>
+
+    <div class="step">
+      <span class="step-number">2</span>
+      <strong>Find your app</strong>
+      <p>
+        Go to the "My Apps" section and select the app you're using for this
+        integration.
+      </p>
+    </div>
+
+    <div class="step">
+      <span class="step-number">3</span>
+      <strong>Check the redirect URI</strong>
+      <p>
+        Look for "Redirect domain" or "Redirect URI" in your app settings. It
+        might be under "App Information" or "OAuth 2.0 settings".
+      </p>
+      <p>Write down the exact redirect URI that's configured there.</p>
+    </div>
+
+    <div class="step">
+      <span class="step-number">4</span>
+      <strong>Update your .env file</strong>
+      <p>
+        Once you've found the correct redirect URI, update your .env file with:
+      </p>
+      <pre>TIKTOK_REDIRECT_URI=your_redirect_uri_here</pre>
+      <p>Then restart your server.</p>
+    </div>
+
+    <div class="uri-test">
+      <h2>Common Redirect URIs to Try</h2>
+      <p>
+        Here are some common redirect URIs that might be configured in your
+        TikTok Developer account:
+      </p>
+
+      <ol>
+        <li><strong>http://localhost:3001</strong> - Just the base URL</li>
+        <li>
+          <strong>http://localhost:3001/callback</strong> - Simple callback path
+        </li>
+        <li>
+          <strong>http://localhost:3001/tiktok/callback</strong> -
+          TikTok-specific callback
+        </li>
+        <li>
+          <strong>http://localhost:3001/api/v1/tiktok/auth/callback</strong> -
+          Current path
+        </li>
+        <li>
+          <strong>http://localhost:3001/api/v1/auth/tiktok/callback</strong> -
+          Alternative path
+        </li>
+      </ol>
+
+      <p>
+        If you're using a TikTok sandbox app, you might need to use a specific
+        redirect URI provided by TikTok.
+      </p>
+
+      <h3>Update Your .env File</h3>
+      <p>
+        After finding the correct URI, update your .env file and restart the
+        server:
+      </p>
+      <pre>
+# In your .env file
+TIKTOK_CLIENT_KEY=aw90wnzt9bc9jq36
+TIKTOK_CLIENT_SECRET=tUHmpIj6fh8KG7LLq2ddIgiAtnx9rozy
+TIKTOK_REDIRECT_URI=the_correct_uri_from_tiktok_developer_portal
+        </pre
+      >
+    </div>
+
+    <p>
+      <strong>Note:</strong> If you're using a TikTok sandbox app, you might
+      need to use a specific redirect URI that TikTok provided to you. Check any
+      emails or documentation you received when you got access to the sandbox.
+    </p>
+  </body>
+</html>

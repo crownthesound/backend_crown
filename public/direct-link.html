@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>TikTok Direct Link</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        max-width: 600px;
+        margin: 50px auto;
+        padding: 20px;
+        text-align: center;
+        background: #f8f9fa;
+        border-radius: 10px;
+        box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+      }
+      h1 {
+        color: #ff0050;
+      }
+      .button {
+        display: inline-block;
+        background: #ff0050;
+        color: white;
+        padding: 12px 24px;
+        text-decoration: none;
+        border-radius: 4px;
+        font-weight: bold;
+        margin: 20px 0;
+      }
+      .note {
+        color: #666;
+        font-size: 14px;
+        margin-top: 20px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Connect to TikTok</h1>
+    <p>Click the button below to connect your TikTok account:</p>
+
+    <a id="tiktokLink" href="#" class="button">Connect TikTok Account</a>
+
+    <p class="note">
+      This will open the TikTok authorization page in a new window.
+    </p>
+
+    <script>
+      // Get the direct link from the server
+      fetch("http://localhost:3001/api/v1/tiktok/auth")
+        .then((response) => response.json())
+        .then((data) => {
+          if (data.status === "success" && data.data && data.data.authUrl) {
+            // Set the link href
+            document.getElementById("tiktokLink").href = data.data.authUrl;
+
+            // Show the auth URL for debugging
+            const debugInfo = document.createElement("div");
+            debugInfo.style.marginTop = "30px";
+            debugInfo.style.padding = "10px";
+            debugInfo.style.background = "#f0f0f0";
+            debugInfo.style.borderRadius = "4px";
+            debugInfo.style.fontSize = "12px";
+            debugInfo.style.textAlign = "left";
+            debugInfo.style.wordBreak = "break-all";
+            debugInfo.innerHTML =
+              "<strong>Auth URL:</strong><br>" + data.data.authUrl;
+            document.body.appendChild(debugInfo);
+          } else {
+            alert("Error getting TikTok auth URL");
+          }
+        })
+        .catch((error) => {
+          alert("Error: " + error.message);
+        });
+    </script>
+  </body>
+</html>

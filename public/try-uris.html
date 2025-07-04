@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Try Different Redirect URIs</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        max-width: 800px;
+        margin: 50px auto;
+        padding: 20px;
+      }
+      h1 {
+        color: #ff0050;
+        text-align: center;
+      }
+      .uri-list {
+        margin: 30px 0;
+      }
+      .uri-item {
+        margin-bottom: 20px;
+        padding: 15px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+      }
+      .uri-label {
+        font-weight: bold;
+        margin-bottom: 10px;
+      }
+      .button {
+        display: inline-block;
+        background: #ff0050;
+        color: white;
+        padding: 10px 20px;
+        text-decoration: none;
+        border-radius: 4px;
+        font-weight: bold;
+      }
+      .note {
+        font-size: 14px;
+        color: #666;
+        margin-top: 5px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Try Different Redirect URIs</h1>
+    <p>
+      Click on any of the links below to try different redirect URIs with your
+      TikTok app:
+    </p>
+
+    <div class="uri-list">
+      <div class="uri-item">
+        <div class="uri-label">
+          URI #1: /api/v1/tiktok/auth/callback (Current)
+        </div>
+        <a
+          href="https://www.tiktok.com/v2/auth/authorize/?client_key=sbaw1irxpr7r1jnduo&scope=user.info.basic,video.list,video.upload&response_type=code&redirect_uri=https%3A%2F%2F4f6e-105-156-68-47.ngrok-free.app%2Fapi%2Fv1%2Ftiktok%2Fauth%2Fcallback&state=Y2Nzamx1eHB1NzpsdWtoQ2ZiMS1aOVN3MTFQRmlub2xpLVRyQ0IteDgyM0RjSzNHS0JkNjBn&code_challenge=DGOV_kuY1l-ngMzfC3GS5aAT6zw5XA1s1KsWbqSu-RQ&code_challenge_method=S256"
+          class="button"
+        >
+          Try This URI
+        </a>
+        <div class="note">
+          https://4f6e-105-156-68-47.ngrok-free.app/api/v1/tiktok/auth/callback
+        </div>
+      </div>
+
+      <div class="uri-item">
+        <div class="uri-label">URI #2: /api/v1/auth/tiktok/callback</div>
+        <a
+          href="https://www.tiktok.com/v2/auth/authorize/?client_key=sbaw1irxpr7r1jnduo&scope=user.info.basic,video.list,video.upload&response_type=code&redirect_uri=https%3A%2F%2F4f6e-105-156-68-47.ngrok-free.app%2Fapi%2Fv1%2Fauth%2Ftiktok%2Fcallback&state=Y2Nzamx1eHB1NzpsdWtoQ2ZiMS1aOVN3MTFQRmlub2xpLVRyQ0IteDgyM0RjSzNHS0JkNjBn&code_challenge=DGOV_kuY1l-ngMzfC3GS5aAT6zw5XA1s1KsWbqSu-RQ&code_challenge_method=S256"
+          class="button"
+        >
+          Try This URI
+        </a>
+        <div class="note">
+          https://4f6e-105-156-68-47.ngrok-free.app/api/v1/auth/tiktok/callback
+        </div>
+      </div>
+
+      <div class="uri-item">
+        <div class="uri-label">URI #3: /tiktok/callback</div>
+        <a
+          href="https://www.tiktok.com/v2/auth/authorize/?client_key=sbaw1irxpr7r1jnduo&scope=user.info.basic,video.list,video.upload&response_type=code&redirect_uri=https%3A%2F%2F4f6e-105-156-68-47.ngrok-free.app%2Ftiktok%2Fcallback&state=Y2Nzamx1eHB1NzpsdWtoQ2ZiMS1aOVN3MTFQRmlub2xpLVRyQ0IteDgyM0RjSzNHS0JkNjBn&code_challenge=DGOV_kuY1l-ngMzfC3GS5aAT6zw5XA1s1KsWbqSu-RQ&code_challenge_method=S256"
+          class="button"
+        >
+          Try This URI
+        </a>
+        <div class="note">
+          https://4f6e-105-156-68-47.ngrok-free.app/tiktok/callback
+        </div>
+      </div>
+
+      <div class="uri-item">
+        <div class="uri-label">URI #4: /callback</div>
+        <a
+          href="https://www.tiktok.com/v2/auth/authorize/?client_key=sbaw1irxpr7r1jnduo&scope=user.info.basic,video.list,video.upload&response_type=code&redirect_uri=https%3A%2F%2F4f6e-105-156-68-47.ngrok-free.app%2Fcallback&state=Y2Nzamx1eHB1NzpsdWtoQ2ZiMS1aOVN3MTFQRmlub2xpLVRyQ0IteDgyM0RjSzNHS0JkNjBn&code_challenge=DGOV_kuY1l-ngMzfC3GS5aAT6zw5XA1s1KsWbqSu-RQ&code_challenge_method=S256"
+          class="button"
+        >
+          Try This URI
+        </a>
+        <div class="note">
+          https://4f6e-105-156-68-47.ngrok-free.app/callback
+        </div>
+      </div>
+    </div>
+
+    <p>
+      <strong>Note:</strong> When you find the correct redirect URI that works,
+      you'll need to update your .env file with that URI.
+    </p>
+  </body>
+</html>

@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Quick TikTok Test</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        max-width: 600px;
+        margin: 50px auto;
+        padding: 20px;
+      }
+      .test-box {
+        background: #f8f9fa;
+        padding: 20px;
+        border-radius: 8px;
+        margin: 20px 0;
+      }
+      .btn {
+        background: #ff0050;
+        color: white;
+        padding: 15px 30px;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+      }
+      pre {
+        background: #f1f1f1;
+        padding: 10px;
+        border-radius: 4px;
+        font-size: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>🚀 Quick TikTok Configuration Test</h1>
+
+    <div class="test-box">
+      <h3>Current Configuration:</h3>
+      <button onclick="showConfig()" class="btn">Show Backend Config</button>
+      <div id="config"></div>
+    </div>
+
+    <div class="test-box">
+      <h3>Direct TikTok Test:</h3>
+      <button onclick="testDirectly()" class="btn">Test TikTok Auth</button>
+      <div id="result"></div>
+    </div>
+
+    <div class="test-box">
+      <h3>📋 Checklist for TikTok Developer Console:</h3>
+      <ul>
+        <li>✅ Client Key: <strong>sbaw1irxpr7r1jnduo</strong></li>
+        <li>
+          ✅ Redirect URI:
+          <strong
+            >https://4f6e-105-156-68-47.ngrok-free.app/api/v1/tiktok/auth/callback</strong
+          >
+        </li>
+        <li>
+          ✅ Web URL: <strong>https://4f6e-105-156-68-47.ngrok-free.app</strong>
+        </li>
+        <li>❓ App Status: Check if it's Published/Live</li>
+        <li>❓ Environment: Sandbox vs Production</li>
+      </ul>
+    </div>
+
+    <script>
+      async function showConfig() {
+        const configDiv = document.getElementById("config");
+        configDiv.innerHTML = "Loading...";
+
+        try {
+          const response = await fetch("/api/v1/tiktok/auth");
+          const data = await response.json();
+
+          if (data.status === "success") {
+            const url = new URL(data.data.authUrl);
+            configDiv.innerHTML = `
+                        <h4>✅ Backend is working:</h4>
+                        <p><strong>Client Key:</strong> ${url.searchParams.get(
+                          "client_key"
+                        )}</p>
+                        <p><strong>Redirect URI:</strong> ${decodeURIComponent(
+                          url.searchParams.get("redirect_uri")
+                        )}</p>
+                        <p><strong>State:</strong> ${url.searchParams.get(
+                          "state"
+                        )}</p>
+                    `;
+          } else {
+            configDiv.innerHTML = `<p style="color: red;">❌ Error: ${data.message}</p>`;
+          }
+        } catch (error) {
+          configDiv.innerHTML = `<p style="color: red;">❌ Error: ${error.message}</p>`;
+        }
+      }
+
+      async function testDirectly() {
+        const resultDiv = document.getElementById("result");
+        resultDiv.innerHTML = "Testing...";
+
+        try {
+          const response = await fetch("/api/v1/tiktok/auth");
+          const data = await response.json();
+
+          if (data.status === "success") {
+            const authUrl = data.data.authUrl;
+            resultDiv.innerHTML = `
+                        <p style="color: green;">✅ Auth URL generated successfully!</p>
+                        <p><strong>Next step:</strong> Click below to test with TikTok</p>
+                        <p><a href="${authUrl}" target="_blank" style="background: #ff0050; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px;">🚀 Test TikTok Login</a></p>
+                        <details>
+                            <summary>Show Full URL</summary>
+                            <pre>${authUrl}</pre>
+                        </details>
+                    `;
+          } else {
+            resultDiv.innerHTML = `<p style="color: red;">❌ Failed: ${data.message}</p>`;
+          }
+        } catch (error) {
+          resultDiv.innerHTML = `<p style="color: red;">❌ Error: ${error.message}</p>`;
+        }
+      }
+
+      // Auto-load config on page load
+      window.addEventListener("load", showConfig);
+    </script>
+  </body>
+</html>

@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Connect to TikTok</title>
+    <style>
+      body {
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 40px 20px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        text-align: center;
+      }
+
+      .container {
+        background: rgba(255, 255, 255, 0.9);
+        border-radius: 15px;
+        padding: 40px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+        color: #333;
+        width: 100%;
+      }
+
+      h1 {
+        color: #ff0050;
+        margin-bottom: 20px;
+      }
+
+      p {
+        margin-bottom: 30px;
+        font-size: 18px;
+        line-height: 1.6;
+      }
+
+      .btn {
+        display: inline-block;
+        background: linear-gradient(45deg, #ff0050, #ff4081);
+        color: white;
+        text-decoration: none;
+        padding: 15px 30px;
+        border-radius: 30px;
+        font-weight: bold;
+        font-size: 18px;
+        transition: transform 0.3s, box-shadow 0.3s;
+        margin: 10px;
+      }
+
+      .btn:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 10px 20px rgba(255, 0, 80, 0.4);
+      }
+
+      .note {
+        margin-top: 30px;
+        font-size: 14px;
+        opacity: 0.8;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>👑 Connect Your TikTok Account</h1>
+
+      <p>Click the button below to connect your TikTok account to Crown.</p>
+
+      <!-- Direct link to TikTok authorization -->
+      <a
+        href="https://www.tiktok.com/v2/auth/authorize/?client_key=aw90wnzt9bc9jq36&scope=user.info.basic,video.list,video.upload&response_type=code&redirect_uri=http%3A%2F%2Flocalhost%3A3001%2Fapi%2Fv1%2Ftiktok%2Fauth%2Fcallback&state=krcyu1doby"
+        class="btn"
+        target="_self"
+      >
+        🎵 Connect TikTok Account
+      </a>
+
+      <p class="note">
+        You will be redirected to TikTok to authorize access to your account.
+      </p>
+    </div>
+  </body>
+</html>

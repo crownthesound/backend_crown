@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>TikTok Sandbox Test</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        max-width: 800px;
+        margin: 50px auto;
+        padding: 20px;
+        line-height: 1.6;
+      }
+      h1,
+      h2 {
+        color: #ff0050;
+      }
+      .container {
+        margin-bottom: 30px;
+        padding: 20px;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+        background-color: #f9f9f9;
+      }
+      label {
+        display: block;
+        margin-bottom: 5px;
+        font-weight: bold;
+      }
+      input[type="text"] {
+        width: 100%;
+        padding: 8px;
+        margin-bottom: 15px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        font-size: 16px;
+      }
+      .button {
+        display: inline-block;
+        background: #ff0050;
+        color: white;
+        padding: 10px 20px;
+        text-decoration: none;
+        border-radius: 4px;
+        font-weight: bold;
+        border: none;
+        cursor: pointer;
+        font-size: 16px;
+      }
+      .result {
+        margin-top: 20px;
+        padding: 15px;
+        border-radius: 5px;
+        background-color: #f0f0f0;
+        display: none;
+      }
+      .error {
+        color: #721c24;
+        background-color: #f8d7da;
+        padding: 10px;
+        border-radius: 4px;
+        margin-bottom: 15px;
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>TikTok Sandbox Test</h1>
+    <p>
+      This page will help you test your TikTok sandbox credentials and find the
+      correct redirect URI.
+    </p>
+
+    <div class="container">
+      <h2>Your TikTok Credentials</h2>
+      <div class="error" id="error"></div>
+
+      <form id="testForm">
+        <div>
+          <label for="clientKey">Client Key:</label>
+          <input
+            type="text"
+            id="clientKey"
+            value="aw90wnzt9bc9jq36"
+            placeholder="Enter your TikTok client key"
+          />
+        </div>
+
+        <div>
+          <label for="clientSecret">Client Secret:</label>
+          <input
+            type="text"
+            id="clientSecret"
+            value="tUHmpIj6fh8KG7LLq2ddIgiAtnx9rozy"
+            placeholder="Enter your TikTok client secret"
+          />
+        </div>
+
+        <div>
+          <label for="redirectUri">Redirect URI:</label>
+          <input
+            type="text"
+            id="redirectUri"
+            placeholder="Enter the redirect URI"
+          />
+        </div>
+
+        <button type="submit" class="button">Generate Auth URL</button>
+      </form>
+
+      <div class="result" id="result"></div>
+    </div>
+
+    <div class="container">
+      <h2>Common Redirect URIs to Try</h2>
+      <p>Click on any of these to fill in the form above:</p>
+      <ul>
+        <li>
+          <a href="#" class="uri-link" data-uri="http://localhost:3001"
+            >http://localhost:3001</a
+          >
+          (Base URL)
+        </li>
+        <li>
+          <a href="#" class="uri-link" data-uri="http://localhost:3001/callback"
+            >http://localhost:3001/callback</a
+          >
+        </li>
+        <li>
+          <a
+            href="#"
+            class="uri-link"
+            data-uri="http://localhost:3001/tiktok/callback"
+            >http://localhost:3001/tiktok/callback</a
+          >
+        </li>
+        <li>
+          <a
+            href="#"
+            class="uri-link"
+            data-uri="http://localhost:3001/api/v1/tiktok/auth/callback"
+            >http://localhost:3001/api/v1/tiktok/auth/callback</a
+          >
+          (Current)
+        </li>
+        <li>
+          <a
+            href="#"
+            class="uri-link"
+            data-uri="http://localhost:3001/api/v1/auth/tiktok/callback"
+            >http://localhost:3001/api/v1/auth/tiktok/callback</a
+          >
+        </li>
+      </ul>
+    </div>
+
+    <script>
+      document.addEventListener("DOMContentLoaded", function () {
+        const form = document.getElementById("testForm");
+        const result = document.getElementById("result");
+        const error = document.getElementById("error");
+
+        // Add event listeners to URI links
+        document.querySelectorAll(".uri-link").forEach((link) => {
+          link.addEventListener("click", function (e) {
+            e.preventDefault();
+            document.getElementById("redirectUri").value =
+              this.getAttribute("data-uri");
+          });
+        });
+
+        form.addEventListener("submit", function (e) {
+          e.preventDefault();
+
+          const clientKey = document.getElementById("clientKey").value.trim();
+          const clientSecret = document
+            .getElementById("clientSecret")
+            .value.trim();
+          const redirectUri = document
+            .getElementById("redirectUri")
+            .value.trim();
+
+          error.style.display = "none";
+
+          if (!clientKey || !clientSecret || !redirectUri) {
+            error.textContent = "Please fill in all fields";
+            error.style.display = "block";
+            return;
+          }
+
+          // Generate a random state
+          const state = Math.random().toString(36).substring(2);
+
+          // Generate a simple code challenge (in a real app, you'd use proper PKCE)
+          const codeChallenge =
+            Math.random().toString(36).substring(2) +
+            Math.random().toString(36).substring(2);
+
+          // Build the auth URL
+          let authUrl = "https://www.tiktok.com/v2/auth/authorize/";
+          authUrl += `?client_key=${encodeURIComponent(clientKey)}`;
+          authUrl += "&scope=user.info.basic,video.list,video.upload";
+          authUrl += "&response_type=code";
+          authUrl += `&redirect_uri=${encodeURIComponent(redirectUri)}`;
+          authUrl += `&state=${encodeURIComponent(state)}`;
+          authUrl += `&code_challenge=${encodeURIComponent(codeChallenge)}`;
+          authUrl += "&code_challenge_method=S256";
+
+          // Display the result
+          result.innerHTML = `
+                    <h3>Generated Auth URL:</h3>
+                    <p style="word-break: break-all;">${authUrl}</p>
+                    <p><a href="${authUrl}" target="_blank" class="button">Open TikTok Auth</a></p>
+                    <p>If this works, update your .env file with:</p>
+                    <pre>TIKTOK_REDIRECT_URI=${redirectUri}</pre>
+                `;
+          result.style.display = "block";
+        });
+      });
+    </script>
+  </body>
+</html>
