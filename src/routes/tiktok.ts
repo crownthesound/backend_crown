@@ -27,6 +27,16 @@ router.options("/profile", corsHandler);
 router.options("/videos", corsHandler);
 router.options("/videos/upload", corsHandler);
 
+// Simple test route
+router.get("/test", (req: Request, res: Response) => {
+  logger.info("TikTok test route accessed");
+  res.status(200).json({
+    status: "success",
+    message: "TikTok routes are working",
+    timestamp: new Date().toISOString(),
+  });
+});
+
 // TikTok OAuth routes
 router.get("/auth/clear-session", tiktokController.clearTikTokSession);
 router.get("/auth", tiktokController.initiateAuth);

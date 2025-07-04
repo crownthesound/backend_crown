@@ -1,3 +1,6 @@
+// Register path aliases for production
+import "./register-aliases";
+
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
