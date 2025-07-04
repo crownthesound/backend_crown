@@ -3,9 +3,12 @@
   "version": "1.0.0",
   "description": "Crown Contest Platform Backend API",
   "main": "dist/index.js",
+  "_moduleAliases": {
+    "@": "dist"
+  },
   "scripts": {
     "dev": "nodemon src/index.ts",
-    "build": "tsc && cp src/register-aliases.js dist/",
+    "build": "tsc",
     "start": "node dist/index.js",
     "test": "jest",
     "test:watch": "jest --watch",
@@ -31,6 +34,7 @@
     "express-rate-limit": "^7.1.5",
     "express-validator": "^7.0.1",
     "helmet": "^7.1.0",
+    "module-alias": "^2.2.3",
     "morgan": "^1.10.0",
     "tsconfig-paths": "^4.2.0",
     "uuid": "^9.0.1",

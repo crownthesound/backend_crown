@@ -1,5 +1,5 @@
-// Register path aliases for production
-import "./register-aliases";
+// Register module aliases
+import "module-alias/register";
 
 import express from "express";
 import cors from "cors";
