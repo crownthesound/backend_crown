@@ -4,7 +4,7 @@ dotenv.config();
 console.log("Environment variables loaded");
 
 // Register module aliases
-import "./register-aliases.js";
+require("./register-aliases");
 
 import express from "express";
 import cors from "cors";
@@ -14,17 +14,17 @@ import compression from "compression";
 import rateLimit from "express-rate-limit";
 import path from "path";
 
-import { errorHandler } from "@/middleware/errorHandler";
-import { notFoundHandler } from "@/middleware/notFoundHandler";
-import { authMiddleware } from "@/middleware/authMiddleware";
-import { logger } from "@/utils/logger";
-import { validateEnv } from "@/config/env";
+import { errorHandler } from "./middleware/errorHandler";
+import { notFoundHandler } from "./middleware/notFoundHandler";
+import { authMiddleware } from "./middleware/authMiddleware";
+import { logger } from "./utils/logger";
+import { validateEnv } from "./config/env";
 
 // Routes
-import authRoutes from "@/routes/auth";
-import tiktokRoutes from "@/routes/tiktok";
-import contestRoutes from "@/routes/contests";
-import { tiktokController } from "@/controllers/tiktokController";
+import authRoutes from "./routes/auth";
+import tiktokRoutes from "./routes/tiktok";
+import contestRoutes from "./routes/contests";
+import { tiktokController } from "./controllers/tiktokController";
 
 // Validate environment variables
 validateEnv();

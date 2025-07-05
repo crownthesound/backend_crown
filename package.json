@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "nodemon src/index.ts",
     "build": "mkdir -p logs && tsc && cp -r src/register-aliases.js dist/",
+    "postbuild": "node -e \"require('fs').writeFileSync('./dist/register-aliases.js', require('fs').readFileSync('./src/register-aliases.js'))\"",
     "start": "node dist/index.js",
     "test": "jest",
     "test:watch": "jest --watch",
