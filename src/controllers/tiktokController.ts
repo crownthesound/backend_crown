@@ -631,7 +631,7 @@ const saveTikTokProfile = catchAsync(
     try {
       // Check if profile already exists
       logger.info("🔍 Checking for existing TikTok profile...");
-      const existingProfile = await supabaseAdmin
+      const existingProfile = await supabase
         .from("tiktok_profiles")
         .select("*")
         .eq("user_id", req.user.id)
@@ -687,7 +687,7 @@ const saveTikTokProfile = catchAsync(
       if (existingProfile.data) {
         // Update existing profile
         logger.info("🔄 Updating existing TikTok profile...");
-        result = await supabaseAdmin
+        result = await supabase
           .from("tiktok_profiles")
           .update(profileData)
           .eq("user_id", req.user.id)
@@ -696,7 +696,7 @@ const saveTikTokProfile = catchAsync(
       } else {
         // Insert new profile
         logger.info("➕ Inserting new TikTok profile...");
-        result = await supabaseAdmin
+        result = await supabase
           .from("tiktok_profiles")
           .insert(profileData)
           .select()
@@ -736,7 +736,7 @@ const getUserProfile = catchAsync(
 
     try {
       // Get profile from database
-      const { data: profile, error } = await supabaseAdmin
+      const { data: profile, error } = await supabase
         .from("tiktok_profiles")
         .select("*")
         .eq("user_id", req.user.id)
@@ -787,7 +787,7 @@ const getUserVideos = catchAsync(
     try {
       // Get TikTok profile from database
       logger.info(`🔍 Getting TikTok profile for user: ${req.user.id}`);
-      const { data: tikTokProfile, error } = await supabaseAdmin
+      const { data: tikTokProfile, error } = await supabase
         .from("tiktok_profiles")
         .select("*")
         .eq("user_id", req.user.id)
@@ -828,7 +828,7 @@ const getUserVideos = catchAsync(
           accessTokenToUse = refreshed.access_token;
 
           // Update DB with new tokens
-          await supabaseAdmin
+          await supabase
             .from("tiktok_profiles")
             .update({
               access_token: refreshed.access_token,
@@ -941,7 +941,7 @@ const getUserVideos = catchAsync(
               accessTokenToUse = refreshed.access_token;
 
               // Update DB
-              await supabaseAdmin
+              await supabase
                 .from("tiktok_profiles")
                 .update({
                   access_token: refreshed.access_token,
@@ -1168,7 +1168,7 @@ const disconnectTikTokProfile = catchAsync(
     try {
       // Check if profile exists
       logger.info("🔍 Checking for existing TikTok profile...");
-      const { data: profile, error: fetchError } = await supabaseAdmin
+      const { data: profile, error: fetchError } = await supabase
         .from("tiktok_profiles")
         .select("*")
         .eq("user_id", req.user.id)
@@ -1189,7 +1189,7 @@ const disconnectTikTokProfile = catchAsync(
 
       // Delete the profile
       logger.info("🗑️ Deleting TikTok profile...");
-      const { error: deleteError } = await supabaseAdmin
+      const { error: deleteError } = await supabase
         .from("tiktok_profiles")
         .delete()
         .eq("user_id", req.user.id);
@@ -1223,5 +1223,5 @@ export const tiktokController = {
   getContestVideos,
   scrapeVideoData,
   updateRedirectUri,
-  disconnectTikTokProfile, // Add the new method to the exported controller
+  disconnectTikTokProfile,
 };

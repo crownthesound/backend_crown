@@ -24,7 +24,7 @@ router.options("/auth/callback", corsHandler);
 router.options("/auth/initiate", corsHandler);
 router.options("/profile/save", corsHandler);
 router.options("/profile", corsHandler);
-router.options("/profile/disconnect", corsHandler); // Add OPTIONS handler for disconnect endpoint
+router.options("/profile/disconnect", corsHandler);
 router.options("/videos", corsHandler);
 router.options("/videos/upload", corsHandler);
 
@@ -55,7 +55,7 @@ router.post(
   "/profile/disconnect",
   authMiddleware,
   tiktokController.disconnectTikTokProfile
-); // Add disconnect endpoint
+);
 router.post("/videos", authMiddleware, tiktokController.getUserVideos); // Changed to POST to match client expectations
 router.post("/videos/upload", authMiddleware, tiktokController.uploadVideo); // Renamed to avoid conflict
 router.get(
