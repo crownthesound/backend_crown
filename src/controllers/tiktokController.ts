@@ -234,7 +234,12 @@ const initiateAuth = catchAsync(
 
     authUrl += `&scope=${encodeURIComponent(scopeOrder)}`;
     authUrl += "&response_type=code";
-    authUrl += `&redirect_uri=${encodeURIComponent(config.tiktok.redirectUri)}`;
+
+    // ALWAYS use the Heroku URL as the redirect URI for TikTok
+    const redirectUri =
+      "https://crown-backend-390b376d933a.herokuapp.com/api/v1/tiktok/auth/callback";
+    authUrl += `&redirect_uri=${encodeURIComponent(redirectUri)}`;
+
     authUrl += `&state=${encodedState}`;
     authUrl += `&code_challenge=${codeChallenge}`;
     authUrl += "&code_challenge_method=S256";
@@ -243,6 +248,7 @@ const initiateAuth = catchAsync(
     logger.info(
       `🔍 TikTok Auth - Encoded scopes: ${encodeURIComponent(scopeOrder)}`
     );
+    logger.info(`🔍 TikTok Auth - Using redirect URI: ${redirectUri}`);
 
     logger.info(`TikTok Auth - Generated URL: ${authUrl}`);
 

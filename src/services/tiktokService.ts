@@ -60,12 +60,16 @@ const exchangeCodeForToken = async (
   codeVerifier?: string
 ): Promise<TikTokTokenResponse> => {
   try {
+    // Always use the Heroku URL as the redirect URI
+    const redirectUri =
+      "https://crown-backend-390b376d933a.herokuapp.com/api/v1/tiktok/auth/callback";
+
     const requestBody: any = {
       client_key: config.tiktok.clientKey,
       client_secret: config.tiktok.clientSecret,
       code,
       grant_type: "authorization_code",
-      redirect_uri: config.tiktok.redirectUri,
+      redirect_uri: redirectUri,
     };
 
     // Add code_verifier if provided (for PKCE)
@@ -84,6 +88,9 @@ const exchangeCodeForToken = async (
     });
 
     logger.info(`🔍 TikTok token exchange - Form data: ${formData.toString()}`);
+    logger.info(
+      `🔍 TikTok token exchange - Using redirect URI: ${redirectUri}`
+    );
 
     const response = await axios.post(
       `${TIKTOK_API_BASE}/v2/oauth/token/`,
