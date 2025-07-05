@@ -1,8 +1,8 @@
 import { Request, Response, NextFunction } from "express";
-import { supabase, supabaseAdmin } from "@/config/supabase";
-import { CustomError, catchAsync } from "@/middleware/errorHandler";
-import { logger } from "@/utils/logger";
-import { AuthenticatedRequest } from "@/middleware/authMiddleware";
+import { supabase, supabaseAdmin } from "../config/supabase";
+import { CustomError, catchAsync } from "../middleware/errorHandler";
+import { logger } from "../utils/logger";
+import { AuthenticatedRequest } from "../middleware/authMiddleware";
 
 const signup = catchAsync(
   async (req: Request, res: Response, next: NextFunction) => {

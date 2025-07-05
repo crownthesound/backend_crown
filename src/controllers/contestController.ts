@@ -1,8 +1,8 @@
 import { Request, Response, NextFunction } from "express";
-import { supabase } from "@/config/supabase";
-import { CustomError, catchAsync } from "@/middleware/errorHandler";
-import { logger } from "@/utils/logger";
-import { AuthenticatedRequest } from "@/middleware/authMiddleware";
+import { supabase } from "../config/supabase";
+import { CustomError, catchAsync } from "../middleware/errorHandler";
+import { logger } from "../utils/logger";
+import { AuthenticatedRequest } from "../middleware/authMiddleware";
 
 const getAllContests = catchAsync(
   async (req: Request, res: Response, next: NextFunction) => {

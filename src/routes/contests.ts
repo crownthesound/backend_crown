@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { contestController } from "@/controllers/contestController";
-import { authMiddleware, restrictTo } from "@/middleware/authMiddleware";
+import { contestController } from "../controllers/contestController";
+import { authMiddleware, restrictTo } from "../middleware/authMiddleware";
 
 const router = Router();
 

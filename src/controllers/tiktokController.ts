@@ -1,11 +1,11 @@
 import { Request, Response, NextFunction } from "express";
 import axios from "axios";
-import { config } from "@/config/env";
-import { CustomError, catchAsync } from "@/middleware/errorHandler";
-import { logger } from "@/utils/logger";
-import { AuthenticatedRequest } from "@/middleware/authMiddleware";
-import { tiktokService } from "@/services/tiktokService";
-import { supabase, supabaseAdmin } from "@/config/supabase";
+import { config } from "../config/env";
+import { CustomError, catchAsync } from "../middleware/errorHandler";
+import { logger } from "../utils/logger";
+import { AuthenticatedRequest } from "../middleware/authMiddleware";
+import { tiktokService } from "../services/tiktokService";
+import { supabase, supabaseAdmin } from "../config/supabase";
 import crypto from "crypto";
 
 // Helper function to generate PKCE code verifier and challenge

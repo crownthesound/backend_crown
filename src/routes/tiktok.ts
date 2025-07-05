@@ -1,8 +1,8 @@
 import { Router, Request, Response } from "express";
 import cors from "cors";
-import { tiktokController } from "@/controllers/tiktokController";
-import { authMiddleware } from "@/middleware/authMiddleware";
-import { logger } from "@/utils/logger";
+import { tiktokController } from "../controllers/tiktokController";
+import { authMiddleware } from "../middleware/authMiddleware";
+import { logger } from "../utils/logger";
 
 const router = Router();
 

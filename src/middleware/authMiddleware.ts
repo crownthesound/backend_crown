@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from "express";
-import { supabase } from "@/config/supabase";
+import { supabase } from "../config/supabase";
 import { CustomError, catchAsync } from "./errorHandler";
-import { logger } from "@/utils/logger";
+import { logger } from "../utils/logger";
 
 export interface AuthenticatedRequest extends Request {
   user?: {
