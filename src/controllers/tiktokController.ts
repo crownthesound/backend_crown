@@ -229,8 +229,8 @@ const initiateAuth = catchAsync(
     // Encode the scopes properly - TikTok is very particular about this
     // Emphasize video.list scope by putting it first if requested
     const scopeOrder = emphasizeVideoPermissions
-      ? "video.list,user.info.basic,video.upload"
-      : "user.info.basic,video.list,video.upload";
+      ? "video.list,user.info.basic"
+      : "user.info.basic,video.list";
 
     authUrl += `&scope=${encodeURIComponent(scopeOrder)}`;
     authUrl += "&response_type=code";
@@ -1145,7 +1145,7 @@ const updateRedirectUri = catchAsync(
     // Normal flow with actual TikTok credentials
     let authUrl = "https://www.tiktok.com/v2/auth/authorize/";
     authUrl += `?client_key=${config.tiktok.clientKey}`;
-    authUrl += "&scope=user.info.basic,video.list,video.upload";
+    authUrl += "&scope=user.info.basic,video.list";
     authUrl += "&response_type=code";
     authUrl += `&redirect_uri=${encodeURIComponent(redirectUri)}`;
     authUrl += `&state=${encodedState}`;
