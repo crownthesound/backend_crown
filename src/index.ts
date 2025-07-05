@@ -1,5 +1,10 @@
+// Load environment variables first
+import * as dotenv from "dotenv";
+dotenv.config();
+console.log("Environment variables loaded");
+
 // Register module aliases
-import "module-alias/register";
+import "./register-aliases.js";
 
 import express from "express";
 import cors from "cors";
@@ -19,6 +24,7 @@ import { validateEnv } from "@/config/env";
 import authRoutes from "@/routes/auth";
 import tiktokRoutes from "@/routes/tiktok";
 import contestRoutes from "@/routes/contests";
+import { tiktokController } from "@/controllers/tiktokController";
 
 // Validate environment variables
 validateEnv();
@@ -120,6 +126,58 @@ app.get("/health", (req, res) => {
   });
 });
 
+// Debug route to list all registered routes
+app.get("/debug/routes", (req, res) => {
+  const routes: { path: string; methods: string[] }[] = [];
+
+  // Function to extract routes from a router
+  function extractRoutes(router: any, basePath: string = "") {
+    if (!router.stack) return;
+
+    router.stack.forEach((layer: any) => {
+      if (layer.route) {
+        // This is a route
+        const path = basePath + (layer.route.path || "");
+        const methods = Object.keys(layer.route.methods).map((m) =>
+          m.toUpperCase()
+        );
+        routes.push({ path, methods });
+      } else if (layer.name === "router" && layer.handle.stack) {
+        // This is a nested router
+        const path =
+          basePath +
+          (layer.regexp.source
+            .replace("^\\/", "")
+            .replace("\\/?(?=\\/|$)", "") || "");
+        extractRoutes(layer.handle, path);
+      } else if (layer.name === "bound dispatch" && layer.handle.stack) {
+        // This is a mounted app or router
+        const path =
+          basePath +
+          (layer.regexp.source
+            .replace("^\\/", "")
+            .replace("\\/?(?=\\/|$)", "") || "");
+        extractRoutes(layer.handle, path);
+      }
+    });
+  }
+
+  // Extract routes from the main app
+  extractRoutes(app._router);
+
+  // Log all routes for debugging
+  logger.info("🔍 All registered routes:");
+  routes.forEach((route) => {
+    logger.info(`${route.methods.join(", ")} ${route.path}`);
+  });
+
+  // Return the routes as JSON
+  res.json({
+    count: routes.length,
+    routes: routes.sort((a, b) => a.path.localeCompare(b.path)),
+  });
+});
+
 // Handle preflight requests for all API routes
 app.options("/api/*", cors());
 
@@ -128,6 +186,23 @@ const apiVersion = process.env["API_VERSION"] || "v1";
 app.use(`/api/${apiVersion}/auth`, authRoutes);
 app.use(`/api/${apiVersion}/tiktok`, tiktokRoutes);
 app.use(`/api/${apiVersion}/contests`, contestRoutes);
+
+// Direct routes for TikTok endpoints that are having issues
+// Direct route for TikTok auth initiate
+app.post(`/api/${apiVersion}/tiktok/auth/initiate`, (req, res, next) => {
+  logger.info("🔍 Direct route for TikTok auth/initiate hit");
+  return tiktokController.initiateAuth(req, res, next);
+});
+
+// Direct route for TikTok profile disconnect
+app.post(
+  `/api/${apiVersion}/tiktok/profile/disconnect`,
+  authMiddleware,
+  (req, res, next) => {
+    logger.info("🔍 Direct route for TikTok profile/disconnect hit");
+    return tiktokController.disconnectTikTokProfile(req, res, next);
+  }
+);
 
 // Alternative redirect URI routes for testing
 app.get("/api/v1/auth/tiktok/callback", (req, res) => {

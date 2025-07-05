@@ -5,7 +5,7 @@ import { CustomError, catchAsync } from "@/middleware/errorHandler";
 import { logger } from "@/utils/logger";
 import { AuthenticatedRequest } from "@/middleware/authMiddleware";
 import { tiktokService } from "@/services/tiktokService";
-import { supabase } from "@/config/supabase";
+import { supabase, supabaseAdmin } from "@/config/supabase";
 import crypto from "crypto";
 
 // Helper function to generate PKCE code verifier and challenge
@@ -631,7 +631,7 @@ const saveTikTokProfile = catchAsync(
     try {
       // Check if profile already exists
       logger.info("🔍 Checking for existing TikTok profile...");
-      const existingProfile = await supabase
+      const existingProfile = await supabaseAdmin
         .from("tiktok_profiles")
         .select("*")
         .eq("user_id", req.user.id)
@@ -687,7 +687,7 @@ const saveTikTokProfile = catchAsync(
       if (existingProfile.data) {
         // Update existing profile
         logger.info("🔄 Updating existing TikTok profile...");
-        result = await supabase
+        result = await supabaseAdmin
           .from("tiktok_profiles")
           .update(profileData)
           .eq("user_id", req.user.id)
@@ -696,7 +696,7 @@ const saveTikTokProfile = catchAsync(
       } else {
         // Insert new profile
         logger.info("➕ Inserting new TikTok profile...");
-        result = await supabase
+        result = await supabaseAdmin
           .from("tiktok_profiles")
           .insert(profileData)
           .select()
@@ -736,7 +736,7 @@ const getUserProfile = catchAsync(
 
     try {
       // Get profile from database
-      const { data: profile, error } = await supabase
+      const { data: profile, error } = await supabaseAdmin
         .from("tiktok_profiles")
         .select("*")
         .eq("user_id", req.user.id)
@@ -787,7 +787,7 @@ const getUserVideos = catchAsync(
     try {
       // Get TikTok profile from database
       logger.info(`🔍 Getting TikTok profile for user: ${req.user.id}`);
-      const { data: tikTokProfile, error } = await supabase
+      const { data: tikTokProfile, error } = await supabaseAdmin
         .from("tiktok_profiles")
         .select("*")
         .eq("user_id", req.user.id)
@@ -828,7 +828,7 @@ const getUserVideos = catchAsync(
           accessTokenToUse = refreshed.access_token;
 
           // Update DB with new tokens
-          await supabase
+          await supabaseAdmin
             .from("tiktok_profiles")
             .update({
               access_token: refreshed.access_token,
@@ -941,7 +941,7 @@ const getUserVideos = catchAsync(
               accessTokenToUse = refreshed.access_token;
 
               // Update DB
-              await supabase
+              await supabaseAdmin
                 .from("tiktok_profiles")
                 .update({
                   access_token: refreshed.access_token,
@@ -1156,6 +1156,61 @@ const updateRedirectUri = catchAsync(
   }
 );
 
+const disconnectTikTokProfile = catchAsync(
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    logger.info("🔍 disconnectTikTokProfile - Request received");
+    logger.info("🔍 disconnectTikTokProfile - User:", req.user?.id);
+
+    if (!req.user) {
+      return next(new CustomError("User authentication required", 401));
+    }
+
+    try {
+      // Check if profile exists
+      logger.info("🔍 Checking for existing TikTok profile...");
+      const { data: profile, error: fetchError } = await supabaseAdmin
+        .from("tiktok_profiles")
+        .select("*")
+        .eq("user_id", req.user.id)
+        .single();
+
+      if (fetchError && fetchError.code !== "PGRST116") {
+        logger.error("❌ Error fetching TikTok profile:", fetchError);
+        throw fetchError;
+      }
+
+      if (!profile) {
+        logger.info("⚠️ No TikTok profile found to disconnect");
+        return res.status(404).json({
+          status: "error",
+          message: "No TikTok profile found to disconnect",
+        });
+      }
+
+      // Delete the profile
+      logger.info("🗑️ Deleting TikTok profile...");
+      const { error: deleteError } = await supabaseAdmin
+        .from("tiktok_profiles")
+        .delete()
+        .eq("user_id", req.user.id);
+
+      if (deleteError) {
+        logger.error("❌ Error deleting TikTok profile:", deleteError);
+        throw deleteError;
+      }
+
+      logger.info("✅ TikTok profile disconnected successfully");
+      return res.status(200).json({
+        status: "success",
+        message: "TikTok profile disconnected successfully",
+      });
+    } catch (error) {
+      logger.error("❌ Disconnect TikTok profile error:", error);
+      return next(new CustomError("Failed to disconnect TikTok profile", 500));
+    }
+  }
+);
+
 export const tiktokController = {
   clearTikTokSession,
   initiateAuth,
@@ -1168,4 +1223,5 @@ export const tiktokController = {
   getContestVideos,
   scrapeVideoData,
   updateRedirectUri,
+  disconnectTikTokProfile, // Add the new method to the exported controller
 };
