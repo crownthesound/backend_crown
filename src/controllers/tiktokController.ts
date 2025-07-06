@@ -641,7 +641,7 @@ const saveTikTokProfile = catchAsync(
         .from("tiktok_profiles")
         .select("*")
         .eq("user_id", req.user.id)
-        .single();
+        .maybeSingle();
 
       logger.info("🔍 Existing profile result:", existingProfile);
 
@@ -697,16 +697,14 @@ const saveTikTokProfile = catchAsync(
           .from("tiktok_profiles")
           .update(profileData)
           .eq("user_id", req.user.id)
-          .select()
-          .single();
+          .select();
       } else {
         // Insert new profile
         logger.info("➕ Inserting new TikTok profile...");
         result = await supabase
           .from("tiktok_profiles")
           .insert(profileData)
-          .select()
-          .single();
+          .select();
       }
 
       logger.info(
@@ -716,15 +714,33 @@ const saveTikTokProfile = catchAsync(
 
       if (result.error) {
         logger.error("❌ Database operation failed:", result.error);
+        
+        // Handle specific database errors
+        if (result.error.code === '23505') {
+          return res.status(409).json({
+            status: "error",
+            message: "TikTok account is already connected to another user",
+            error_code: "DUPLICATE_TIKTOK_ACCOUNT"
+          });
+        }
+        
         throw result.error;
       }
 
-      logger.info("✅ TikTok profile saved successfully:", result.data);
+      // Handle array response from database operations
+      const savedProfileData = Array.isArray(result.data) ? result.data[0] : result.data;
+      
+      if (!savedProfileData) {
+        logger.error("❌ No profile data returned from database operation");
+        throw new Error("Failed to save profile - no data returned");
+      }
+
+      logger.info("✅ TikTok profile saved successfully:", savedProfileData);
 
       return res.status(200).json({
         status: "success",
         data: {
-          profile: result.data,
+          profile: savedProfileData,
         },
       });
     } catch (error) {
@@ -746,7 +762,7 @@ const getUserProfile = catchAsync(
         .from("tiktok_profiles")
         .select("*")
         .eq("user_id", req.user.id)
-        .single();
+        .maybeSingle();
 
       if (error && error.code !== "PGRST116") {
         throw error;
@@ -797,7 +813,7 @@ const getUserVideos = catchAsync(
         .from("tiktok_profiles")
         .select("*")
         .eq("user_id", req.user.id)
-        .single();
+        .maybeSingle();
 
       logger.info(`🔍 TikTok profile result:`, { data: tikTokProfile, error });
 
@@ -932,6 +948,21 @@ const getUserVideos = catchAsync(
           data: videos,
         });
       } catch (videoError: any) {
+        // Handle 403 Forbidden errors specifically
+        if (videoError.response && videoError.response.status === 403) {
+          logger.warn("⚠️ TikTok API returned 403 Forbidden - permission denied");
+          return res.status(403).json({
+            status: "error",
+            message: "TikTok access forbidden. Please reconnect your TikTok account with proper permissions.",
+            error_code: "TIKTOK_ACCESS_FORBIDDEN",
+            data: {
+              videos: [],
+              cursor: null,
+              has_more: false,
+            },
+          });
+        }
+
         // If unauthorized, attempt one more refresh + retry
         if (
           (videoError.response && videoError.response.status === 401) ||
