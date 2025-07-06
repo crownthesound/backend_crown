@@ -71,7 +71,8 @@ app.use((req, res, next) => {
 // Rate limiting - more permissive for development with proper proxy handling
 const limiter = rateLimit({
   windowMs: parseInt(process.env["RATE_LIMIT_WINDOW_MS"] || "900000"), // 15 minutes
-  max: parseInt(process.env["RATE_LIMIT_MAX_REQUESTS"] || "1000"), // Increased limit
+  // Allow higher throughput by default – can still be overridden with env vars
+  max: parseInt(process.env["RATE_LIMIT_MAX_REQUESTS"] || "5000"),
   message: {
     error: "Too many requests from this IP, please try again later.",
   },
@@ -87,8 +88,20 @@ const limiter = rateLimit({
         "unknown")
     );
   },
-  // Skip rate limiting for TikTok auth endpoints in development
+  // Skip rate limiting for:
+  // 1. Requests carrying a valid internal API key (used by cron / edge functions)
+  // 2. Read-only leaderboard endpoints (high read volume, low risk)
+  // 3. TikTok auth endpoints when running locally
   skip: (req) => {
+    const bypassKey = process.env["RATE_LIMIT_BYPASS_KEY"];
+    if (bypassKey && req.headers["x-api-key"] === bypassKey) {
+      return true;
+    }
+
+    if (req.method === "GET" && req.url.includes("/leaderboard")) {
+      return true;
+    }
+
     return (
       process.env.NODE_ENV === "development" && req.url.includes("/tiktok/")
     );
