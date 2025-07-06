@@ -404,6 +404,7 @@ export type Database = {
           display_name: string | null;
           follower_count: number | null;
           following_count: number | null;
+          granted_scopes: string | null;
           id: string;
           is_verified: boolean | null;
           likes_count: number | null;
@@ -422,6 +423,7 @@ export type Database = {
           display_name?: string | null;
           follower_count?: number | null;
           following_count?: number | null;
+          granted_scopes?: string | null;
           id?: string;
           is_verified?: boolean | null;
           likes_count?: number | null;
@@ -440,6 +442,7 @@ export type Database = {
           display_name?: string | null;
           follower_count?: number | null;
           following_count?: number | null;
+          granted_scopes?: string | null;
           id?: string;
           is_verified?: boolean | null;
           likes_count?: number | null;
