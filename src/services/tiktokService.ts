@@ -116,20 +116,33 @@ const exchangeCodeForToken = async (
       // Check if user.info.basic is in the granted scopes
       const grantedScopes = response.data.scope.split(",");
       const hasUserInfoBasic = grantedScopes.includes("user.info.basic");
+      const hasVideoList = grantedScopes.includes("video.list");
+      
       logger.info(
         "🔍 TikTok token exchange - Has user.info.basic scope:",
         hasUserInfoBasic
+      );
+      logger.info(
+        "🔍 TikTok token exchange - Has video.list scope:",
+        hasVideoList
       );
 
       if (!hasUserInfoBasic) {
         logger.warn(
           "⚠️ TikTok token exchange - user.info.basic scope was NOT granted!"
         );
-        logger.info(
-          "🔍 TikTok token exchange - Granted scopes list:",
-          grantedScopes
+      }
+      
+      if (!hasVideoList) {
+        logger.warn(
+          "⚠️ TikTok token exchange - video.list scope was NOT granted! Videos will not be accessible."
         );
       }
+      
+      logger.info(
+        "🔍 TikTok token exchange - Granted scopes list:",
+        grantedScopes
+      );
     }
 
     return response.data;

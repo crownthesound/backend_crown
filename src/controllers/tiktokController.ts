@@ -553,7 +553,7 @@ const handleCallback = catchAsync(
               tokenData.refresh_token
             }&user_token=${userToken}&tiktok_user=${encodeURIComponent(
               JSON.stringify(userInfo.data.user)
-            )}`
+            )}&granted_scopes=${encodeURIComponent(tokenData.scope || "")}`
           );
         } catch (basicUserInfoError) {
           logger.error(
@@ -596,7 +596,7 @@ const handleCallback = catchAsync(
             tokenData.refresh_token
           }&user_token=${userToken}&tiktok_user=${encodeURIComponent(
             JSON.stringify(minimalUserInfo)
-          )}`
+          )}&granted_scopes=${encodeURIComponent(tokenData.scope || "")}`
         );
       }
     } catch (error) {
@@ -610,7 +610,7 @@ const handleCallback = catchAsync(
 
 const saveTikTokProfile = catchAsync(
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
-    const { accessToken, refreshToken, userInfo } = req.body;
+    const { accessToken, refreshToken, userInfo, grantedScopes } = req.body;
 
     logger.info(
       "🔍 saveTikTokProfile - Request body:",
@@ -675,6 +675,7 @@ const saveTikTokProfile = catchAsync(
         access_token: accessToken,
         refresh_token: refreshToken,
         is_verified: userInfo.is_verified || false,
+        granted_scopes: grantedScopes || "", // Store granted scopes
         token_expires_at: new Date(
           Date.now() + 23.5 * 60 * 60 * 1000 // ~23.5h safety margin
         ).toISOString(), // 24 hours from now
@@ -826,6 +827,26 @@ const getUserVideos = catchAsync(
           `❌ TikTok profile not found or no access token for user: ${req.user.id}`
         );
         return next(new CustomError("TikTok profile not connected", 404));
+      }
+
+      // Check if video.list scope was granted
+      const grantedScopes = tikTokProfile.granted_scopes || "";
+      const hasVideoListScope = grantedScopes.includes("video.list");
+      
+      logger.info(
+        `🔍 TikTok granted scopes: ${grantedScopes}, has video.list: ${hasVideoListScope}`
+      );
+      
+      if (!hasVideoListScope) {
+        logger.warn(
+          `⚠️ User ${req.user.id} connected TikTok but declined video permissions`
+        );
+        return next(
+          new CustomError(
+            "TikTok video access denied. Please reconnect and grant video permissions to load your TikTok videos.",
+            403
+          )
+        );
       }
 
       const tiktokAccessToken = tikTokProfile.access_token;
