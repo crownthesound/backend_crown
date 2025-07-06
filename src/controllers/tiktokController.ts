@@ -983,8 +983,9 @@ const getUserVideos = catchAsync(
         ) {
           return res.status(403).json({
             status: "error",
-            message:
-              "TikTok video access permission not granted. Please reconnect your TikTok account with video permissions.",
+            // message:
+            //   "TikTok video access permission not granted. Please reconnect your TikTok account with video permissions.",
+            message: videoError.message,
             error_code: "PERMISSION_DENIED",
             data: {
               videos: [],

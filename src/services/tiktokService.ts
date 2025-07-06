@@ -315,33 +315,21 @@ const getUserInfo = async (accessToken: string): Promise<TikTokUserInfo> => {
   }
 };
 
+// -----------------------------
+// SCOPE‐CHECKING PLACEHOLDER
+// -----------------------------
+// The previous heuristic mis-detected valid tokens for some users because
+// TikTok doesn’t encode scopes in the access token string in a reliable way.
+// Until we persist the `scope` field returned by /oauth/token or add a proper
+// token introspection call, we optimistically assume the required scope is
+// present and let the TikTok API respond with 403/404 if it is not.
+
 const hasScopeGranted = (
-  accessToken: string,
-  requiredScope: string
+  _accessToken: string,
+  _requiredScope: string
 ): boolean => {
-  try {
-    // TikTok access tokens may contain scope information
-    // We can also check from the token format if it's a limited scope token
-
-    // Check if token has a specific format that indicates limited scope
-    if (accessToken.includes("!") && accessToken.includes(".va")) {
-      const tokenParts = accessToken.split("!");
-      // This is a simplified check - in a real implementation,
-      // you would store the granted scopes in the database during token exchange
-
-      // For video.list scope, the token typically has a specific format
-      if (requiredScope === "video.list") {
-        // This is a simplified check - TikTok doesn't expose scope info in the token directly
-        return !accessToken.includes("limited");
-      }
-    }
-
-    // Default to false if we can't determine
-    return false;
-  } catch (error) {
-    logger.error("❌ Error checking scope grant:", error);
-    return false;
-  }
+  // TODO: store & check scopes correctly (requires DB migration)
+  return true;
 };
 
 const getUserVideos = async (
