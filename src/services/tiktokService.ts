@@ -53,16 +53,27 @@ interface TikTokVideoData {
   };
 }
 
+// Always use the IPv4-friendly production host. When we want the "Sandbox"
+// environment we let TikTok know via the special header `X-Tt-Env: sandbox`.
+// This avoids the DNS problem where `open-sandbox.tiktokapis.com` resolves
+// only to an IPv6 AAAA record (many hosts – including our Cloudflare tunnel –
+// have no IPv6 connectivity, which makes Node throw ENOTFOUND).
 const TIKTOK_API_BASE = "https://open.tiktokapis.com";
+
+// If we are in sandbox mode, attach the header globally so every request –
+// token exchange, user info, video list, … – is routed to the sandbox on
+// TikTok’s side while still hitting a hostname that resolves over IPv4.
+if (config.tiktok.useSandbox) {
+  axios.defaults.headers.common["X-Tt-Env"] = "sandbox";
+}
 
 const exchangeCodeForToken = async (
   code: string,
   codeVerifier?: string
 ): Promise<TikTokTokenResponse> => {
   try {
-    // Always use the Heroku URL as the redirect URI
-    const redirectUri =
-      "https://crown-backend-390b376d933a.herokuapp.com/api/v1/tiktok/auth/callback";
+    // Use the redirect URI from config (matches TikTok app settings)
+    const { redirectUri } = config.tiktok;
 
     const requestBody: any = {
       client_key: config.tiktok.clientKey,

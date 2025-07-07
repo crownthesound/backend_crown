@@ -42,6 +42,9 @@ export const validateEnv = (): void => {
   }
 };
 
+// Determine which TikTok environment we should use (production by default)
+const useSandbox = process.env["TIKTOK_ENV"] === "sandbox";
+
 export const config = {
   nodeEnv: process.env["NODE_ENV"] || "development",
   port: parseInt(process.env["PORT"] || "3001", 10),
@@ -52,6 +55,8 @@ export const config = {
     serviceRoleKey: process.env["SUPABASE_SERVICE_ROLE_KEY"]!,
   },
   tiktok: {
+    // true when TIKTOK_ENV=sandbox, false otherwise
+    useSandbox,
     clientKey: process.env["TIKTOK_CLIENT_KEY"] || "",
     clientSecret: process.env["TIKTOK_CLIENT_SECRET"] || "",
     redirectUri:

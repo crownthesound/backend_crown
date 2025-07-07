@@ -235,9 +235,8 @@ const initiateAuth = catchAsync(
     authUrl += `&scope=${encodeURIComponent(scopeOrder)}`;
     authUrl += "&response_type=code";
 
-    // ALWAYS use the Heroku URL as the redirect URI for TikTok
-    const redirectUri =
-      "https://crown-backend-390b376d933a.herokuapp.com/api/v1/tiktok/auth/callback";
+    // Use the redirect URI from our runtime config so it can differ per environment
+    const redirectUri = config.tiktok.redirectUri;
     authUrl += `&redirect_uri=${encodeURIComponent(redirectUri)}`;
 
     authUrl += `&state=${encodedState}`;
