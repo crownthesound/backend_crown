@@ -493,9 +493,55 @@ const handleCallback = catchAsync(
     if (code === "MOCK_CODE_FOR_TESTING") {
       logger.info("TikTok Callback - Using mock data for testing");
 
-      // Redirect back to frontend with success parameter
-      const frontendUrl = config.cors.origin[0] || "http://localhost:5173";
-      return res.redirect(`${frontendUrl}?tiktok_connected=true&mock=true`);
+      // Return HTML that closes the popup and communicates success to parent window
+      const htmlResponse = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>TikTok Connected Successfully</title>
+          <meta charset="utf-8">
+          <style>
+            body { 
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+              color: white;
+              display: flex;
+              justify-content: center;
+              align-items: center;
+              height: 100vh;
+              margin: 0;
+              text-align: center;
+            }
+            .container {
+              background: rgba(255,255,255,0.1);
+              padding: 2rem;
+              border-radius: 1rem;
+              backdrop-filter: blur(10px);
+              box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+            }
+            .success-icon {
+              font-size: 3rem;
+              margin-bottom: 1rem;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="success-icon">✅</div>
+            <h2>TikTok Connected Successfully!</h2>
+            <p>This window will close automatically...</p>
+          </div>
+          <script>
+            // Close the popup window after a short delay
+            setTimeout(() => {
+              window.close();
+            }, 1500);
+          </script>
+        </body>
+        </html>
+      `;
+      
+      return res.send(htmlResponse);
     }
 
     try {
@@ -517,17 +563,55 @@ const handleCallback = catchAsync(
         logger.info("✅ TikTok user info retrieved successfully");
         logger.info(`✅ User info: ${JSON.stringify(userInfo)}`);
 
-        // Redirect back to frontend with success - include the user token and access token
-        const frontendUrl = config.cors.origin[0] || "http://localhost:5173";
-        return res.redirect(
-          `${frontendUrl}?tiktok_connected=true&access_token=${
-            tokenData.access_token
-          }&refresh_token=${
-            tokenData.refresh_token
-          }&user_token=${userToken}&tiktok_user=${encodeURIComponent(
-            JSON.stringify(userInfo.data.user)
-          )}`
-        );
+        // Return HTML that closes the popup and communicates success to parent window
+        const htmlResponse = `
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <title>TikTok Connected Successfully</title>
+            <meta charset="utf-8">
+            <style>
+              body { 
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                height: 100vh;
+                margin: 0;
+                text-align: center;
+              }
+              .container {
+                background: rgba(255,255,255,0.1);
+                padding: 2rem;
+                border-radius: 1rem;
+                backdrop-filter: blur(10px);
+                box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+              }
+              .success-icon {
+                font-size: 3rem;
+                margin-bottom: 1rem;
+              }
+            </style>
+          </head>
+          <body>
+            <div class="container">
+              <div class="success-icon">✅</div>
+              <h2>TikTok Connected Successfully!</h2>
+              <p>This window will close automatically...</p>
+            </div>
+            <script>
+              // Close the popup window after a short delay
+              setTimeout(() => {
+                window.close();
+              }, 1500);
+            </script>
+          </body>
+          </html>
+        `;
+        
+        return res.send(htmlResponse);
       } catch (userInfoError) {
         logger.error(
           "❌ Failed to get user info, but token exchange was successful:",
@@ -543,17 +627,55 @@ const handleCallback = catchAsync(
           logger.info("✅ TikTok basic user info retrieved successfully");
           logger.info(`✅ Basic user info: ${JSON.stringify(userInfo)}`);
 
-          // Redirect back to frontend with success - include the user token and access token
-          const frontendUrl = config.cors.origin[0] || "http://localhost:5173";
-          return res.redirect(
-            `${frontendUrl}?tiktok_connected=true&access_token=${
-              tokenData.access_token
-            }&refresh_token=${
-              tokenData.refresh_token
-            }&user_token=${userToken}&tiktok_user=${encodeURIComponent(
-              JSON.stringify(userInfo.data.user)
-            )}`
-          );
+          // Return HTML that closes the popup and communicates success to parent window
+          const htmlResponse = `
+            <!DOCTYPE html>
+            <html>
+            <head>
+              <title>TikTok Connected Successfully</title>
+              <meta charset="utf-8">
+              <style>
+                body { 
+                  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                  color: white;
+                  display: flex;
+                  justify-content: center;
+                  align-items: center;
+                  height: 100vh;
+                  margin: 0;
+                  text-align: center;
+                }
+                .container {
+                  background: rgba(255,255,255,0.1);
+                  padding: 2rem;
+                  border-radius: 1rem;
+                  backdrop-filter: blur(10px);
+                  box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+                }
+                .success-icon {
+                  font-size: 3rem;
+                  margin-bottom: 1rem;
+                }
+              </style>
+            </head>
+            <body>
+              <div class="container">
+                <div class="success-icon">✅</div>
+                <h2>TikTok Connected Successfully!</h2>
+                <p>This window will close automatically...</p>
+              </div>
+              <script>
+                // Close the popup window after a short delay
+                setTimeout(() => {
+                  window.close();
+                }, 1500);
+              </script>
+            </body>
+            </html>
+          `;
+          
+          return res.send(htmlResponse);
         } catch (basicUserInfoError) {
           logger.error(
             "❌ Failed to get basic user info as well:",
@@ -586,17 +708,55 @@ const handleCallback = catchAsync(
           minimalUserInfo
         );
 
-        // Redirect with minimal user info
-        const frontendUrl = config.cors.origin[0] || "http://localhost:5173";
-        return res.redirect(
-          `${frontendUrl}?tiktok_connected=true&partial=true&access_token=${
-            tokenData.access_token
-          }&refresh_token=${
-            tokenData.refresh_token
-          }&user_token=${userToken}&tiktok_user=${encodeURIComponent(
-            JSON.stringify(minimalUserInfo)
-          )}`
-        );
+        // Return HTML that closes the popup and communicates success to parent window
+        const htmlResponse = `
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <title>TikTok Connected Successfully</title>
+            <meta charset="utf-8">
+            <style>
+              body { 
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                height: 100vh;
+                margin: 0;
+                text-align: center;
+              }
+              .container {
+                background: rgba(255,255,255,0.1);
+                padding: 2rem;
+                border-radius: 1rem;
+                backdrop-filter: blur(10px);
+                box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+              }
+              .success-icon {
+                font-size: 3rem;
+                margin-bottom: 1rem;
+              }
+            </style>
+          </head>
+          <body>
+            <div class="container">
+              <div class="success-icon">✅</div>
+              <h2>TikTok Connected Successfully!</h2>
+              <p>This window will close automatically...</p>
+            </div>
+            <script>
+              // Close the popup window after a short delay
+              setTimeout(() => {
+                window.close();
+              }, 1500);
+            </script>
+          </body>
+          </html>
+        `;
+        
+        return res.send(htmlResponse);
       }
     } catch (error) {
       logger.error("TikTok callback error:", error);
