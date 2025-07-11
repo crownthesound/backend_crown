@@ -181,9 +181,34 @@ const clearTikTokSession = catchAsync(
 );
 
 const initiateAuth = catchAsync(
-  async (req: Request, res: Response, next: NextFunction) => {
-    // Extract user token from query params or body
-    const userToken = (req.query.token as string) || req.body.token;
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    // For authenticated requests (POST /auth/initiate), we get the user from the middleware
+    // For non-authenticated requests (GET /auth), we need to extract the token manually
+    let userToken = (req.query.token as string) || req.body.token;
+    let userId = null;
+    
+    // If this is an authenticated request, get the user info from middleware
+    if (req.user) {
+      userId = req.user.id;
+      logger.info(`🔍 TikTok Auth Initiate - Authenticated user: ${userId}`);
+      
+      // For authenticated requests, we'll use the user's JWT token
+      if (req.headers.authorization) {
+        const authHeader = req.headers.authorization;
+        if (authHeader.startsWith('Bearer ')) {
+          userToken = authHeader.substring(7);
+        }
+      }
+    } else {
+      // For non-authenticated requests, try to get token from headers or params
+      if (!userToken && req.headers.authorization) {
+        const authHeader = req.headers.authorization;
+        if (authHeader.startsWith('Bearer ')) {
+          userToken = authHeader.substring(7);
+        }
+      }
+    }
+    
     const forceAccountSelection =
       req.query.force_account_selection === "true" ||
       req.body.force_account_selection === true;
@@ -192,17 +217,33 @@ const initiateAuth = catchAsync(
       req.body.emphasize_video_permissions === true;
     
     // Log the authentication attempt
+    logger.info(`🔍 TikTok Auth Initiate - Method: ${req.method}`);
     logger.info(`🔍 TikTok Auth Initiate - User token: ${userToken ? 'Present' : 'Missing'}`);
+    logger.info(`🔍 TikTok Auth Initiate - User ID: ${userId || 'Missing'}`);
+    logger.info(`🔍 TikTok Auth Initiate - Authorization header: ${req.headers.authorization ? 'Present' : 'Missing'}`);
     
-    // If no user token is provided, show a user-friendly error
-    if (!userToken || userToken.trim() === '') {
-      logger.warn("⚠️ TikTok authentication attempted without user token");
-      
-      // Return an error page explaining the issue
+    // For POST requests (API calls), we require authentication
+    if (req.method === "POST") {
+      if (!req.user) {
+        logger.warn("⚠️ TikTok API authentication attempted without user authentication");
+        return res.status(401).json({
+          status: "error",
+          message: "You must be logged in to connect your TikTok account. Please log in first and try again.",
+          error_code: "AUTHENTICATION_REQUIRED"
+        });
+      }
+    }
+    
+    // For GET requests (browser navigation), we allow it but require token in state
+    if (req.method === "GET" && (!userToken || userToken.trim() === '')) {
+      logger.warn("⚠️ TikTok browser authentication attempted without user token");
       return res.send(generateErrorHTML(
         "You must be logged in to connect your TikTok account. Please log in first and try again."
       ));
     }
+    
+    // Use the user token if available, otherwise use empty string (it will be handled later)
+    const tokenToStore = userToken || "";
 
     // Generate PKCE code challenge and verifier
     const { codeChallenge, codeVerifier } = generatePKCE();
@@ -210,7 +251,7 @@ const initiateAuth = catchAsync(
     // Store code verifier in state along with user token if provided
     const stateData = {
       codeVerifier,
-      userToken: userToken || "",
+      userToken: tokenToStore,
       timestamp: Date.now(),
     };
 

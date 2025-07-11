@@ -40,8 +40,8 @@ router.get("/test", (req: Request, res: Response) => {
 
 // TikTok OAuth routes
 router.get("/auth/clear-session", tiktokController.clearTikTokSession);
-router.get("/auth", tiktokController.initiateAuth);
-router.post("/auth/initiate", tiktokController.initiateAuth);
+router.get("/auth", tiktokController.initiateAuth); // No auth required for direct browser access
+router.post("/auth/initiate", authMiddleware, tiktokController.initiateAuth); // Auth required for API calls
 router.get("/auth/callback", tiktokController.handleCallback);
 
 // Protected TikTok API routes
