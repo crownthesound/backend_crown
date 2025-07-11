@@ -493,6 +493,26 @@ const handleCallback = catchAsync(
     if (code === "MOCK_CODE_FOR_TESTING") {
       logger.info("TikTok Callback - Using mock data for testing");
 
+      // Save mock TikTok profile to the database
+      const mockTokenData = {
+        access_token: "mock_access_token",
+        refresh_token: "mock_refresh_token",
+        expires_in: 86400
+      };
+      
+      const mockUserInfo = {
+        open_id: "mock_user_id",
+        display_name: "Mock TikTok User",
+        avatar_url: "",
+        follower_count: 100,
+        following_count: 50,
+        likes_count: 1000,
+        video_count: 10,
+        is_verified: false,
+      };
+      
+      await saveTikTokProfileToDatabase(userToken, mockTokenData, mockUserInfo);
+
       // Return HTML that closes the popup and communicates success to parent window
       const htmlResponse = `
         <!DOCTYPE html>
@@ -563,6 +583,9 @@ const handleCallback = catchAsync(
         logger.info("✅ TikTok user info retrieved successfully");
         logger.info(`✅ User info: ${JSON.stringify(userInfo)}`);
 
+        // Save the TikTok profile to the database
+        await saveTikTokProfileToDatabase(userToken, tokenData, userInfo.data.user);
+
         // Return HTML that closes the popup and communicates success to parent window
         const htmlResponse = `
           <!DOCTYPE html>
@@ -626,6 +649,9 @@ const handleCallback = catchAsync(
           );
           logger.info("✅ TikTok basic user info retrieved successfully");
           logger.info(`✅ Basic user info: ${JSON.stringify(userInfo)}`);
+
+          // Save the TikTok profile to the database
+          await saveTikTokProfileToDatabase(userToken, tokenData, userInfo.data.user);
 
           // Return HTML that closes the popup and communicates success to parent window
           const htmlResponse = `
@@ -707,6 +733,9 @@ const handleCallback = catchAsync(
           "📝 Created minimal user info from token:",
           minimalUserInfo
         );
+
+        // Save the TikTok profile to the database
+        await saveTikTokProfileToDatabase(userToken, tokenData, minimalUserInfo);
 
         // Return HTML that closes the popup and communicates success to parent window
         const htmlResponse = `
@@ -1376,6 +1405,90 @@ const disconnectTikTokProfile = catchAsync(
     }
   }
 );
+
+// Helper function to save TikTok profile to database
+async function saveTikTokProfileToDatabase(userToken: string, tokenData: any, userInfo: any) {
+  try {
+    logger.info("💾 Saving TikTok profile to database...");
+    
+    // Get user ID from the userToken (JWT)
+    const jwt = require('jsonwebtoken');
+    const decoded = jwt.decode(userToken);
+    const userId = decoded?.sub;
+    
+    if (!userId) {
+      logger.error("❌ Could not extract user ID from token");
+      return;
+    }
+    
+    // Extract TikTok user ID from access token
+    let tikTokUserId = userInfo.open_id;
+    if (!tikTokUserId) {
+      // TikTok access tokens contain user ID in the format: act.XXXX!YYYY.va
+      // where YYYY is the user ID
+      const tokenParts = tokenData.access_token.split("!");
+      tikTokUserId = tokenParts.length > 1 ? tokenParts[1].split(".")[0] : `unknown-${Date.now()}`;
+      logger.info(`🔍 Extracted TikTok user ID from token: ${tikTokUserId}`);
+    }
+    
+    // Use a placeholder username if not provided
+    const username = userInfo.display_name || `tiktok_user_${tikTokUserId.substring(0, 8)}`;
+    
+    const profileData = {
+      user_id: userId,
+      tiktok_user_id: tikTokUserId,
+      username: username,
+      display_name: userInfo.display_name || username,
+      avatar_url: userInfo.avatar_url || "",
+      follower_count: userInfo.follower_count || 0,
+      following_count: userInfo.following_count || 0,
+      likes_count: userInfo.likes_count || 0,
+      video_count: userInfo.video_count || 0,
+      access_token: tokenData.access_token,
+      refresh_token: tokenData.refresh_token,
+      is_verified: userInfo.is_verified || false,
+      token_expires_at: new Date(Date.now() + tokenData.expires_in * 1000).toISOString(),
+    };
+    
+    // Check if profile already exists
+    const { data: existingProfile } = await supabase
+      .from("tiktok_profiles")
+      .select("*")
+      .eq("user_id", userId)
+      .maybeSingle();
+    
+    let result;
+    if (existingProfile) {
+      // Update existing profile
+      logger.info("🔄 Updating existing TikTok profile...");
+      result = await supabase
+        .from("tiktok_profiles")
+        .update(profileData)
+        .eq("user_id", userId)
+        .select()
+        .single();
+    } else {
+      // Insert new profile
+      logger.info("➕ Inserting new TikTok profile...");
+      result = await supabase
+        .from("tiktok_profiles")
+        .insert(profileData)
+        .select()
+        .single();
+    }
+    
+    if (result.error) {
+      logger.error("❌ Database operation failed:", result.error);
+      throw result.error;
+    }
+    
+    logger.info("✅ TikTok profile saved successfully:", result.data);
+    return result.data;
+  } catch (error) {
+    logger.error("❌ Error saving TikTok profile:", error);
+    throw error;
+  }
+}
 
 export const tiktokController = {
   clearTikTokSession,
