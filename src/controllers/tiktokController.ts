@@ -190,6 +190,19 @@ const initiateAuth = catchAsync(
     const emphasizeVideoPermissions =
       req.query.emphasize_video_permissions === "true" ||
       req.body.emphasize_video_permissions === true;
+    
+    // Log the authentication attempt
+    logger.info(`🔍 TikTok Auth Initiate - User token: ${userToken ? 'Present' : 'Missing'}`);
+    
+    // If no user token is provided, show a user-friendly error
+    if (!userToken || userToken.trim() === '') {
+      logger.warn("⚠️ TikTok authentication attempted without user token");
+      
+      // Return an error page explaining the issue
+      return res.send(generateErrorHTML(
+        "You must be logged in to connect your TikTok account. Please log in first and try again."
+      ));
+    }
 
     // Generate PKCE code challenge and verifier
     const { codeChallenge, codeVerifier } = generatePKCE();
@@ -395,7 +408,7 @@ const initiateAuth = catchAsync(
       `;
 
       res.setHeader("Content-Type", "text/html");
-      return res.send(htmlResponse);
+      return res.send(generateSuccessHTML());
     }
 
     // If this is an API call, return JSON with the auth URL
@@ -512,7 +525,7 @@ const handleCallback = catchAsync(
       };
       
       try {
-        await saveTikTokProfileToDatabase(userToken, mockTokenData, mockUserInfo);
+        await saveTikTokProfileToDatabase(userToken, mockTokenData, mockUserInfo, req);
       } catch (saveError: any) {
         logger.error("❌ Failed to save mock TikTok profile to database:", saveError);
         
@@ -564,7 +577,7 @@ const handleCallback = catchAsync(
           </html>
         `;
         
-        return res.send(errorHtml);
+        return res.send(generateErrorHTML(saveError.message));
       }
 
       // Return HTML that closes the popup and communicates success to parent window
@@ -615,7 +628,7 @@ const handleCallback = catchAsync(
         </html>
       `;
       
-      return res.send(htmlResponse);
+      return res.send(generateSuccessHTML());
     }
 
     try {
@@ -639,7 +652,7 @@ const handleCallback = catchAsync(
 
         // Save the TikTok profile to the database
         try {
-          await saveTikTokProfileToDatabase(userToken, tokenData, userInfo.data.user);
+          await saveTikTokProfileToDatabase(userToken, tokenData, userInfo.data.user, req);
         } catch (saveError: any) {
           logger.error("❌ Failed to save TikTok profile to database:", saveError);
           
@@ -691,7 +704,7 @@ const handleCallback = catchAsync(
             </html>
           `;
           
-          return res.send(errorHtml);
+          return res.send(generateErrorHTML(saveError.message));
         }
 
         // Return HTML that closes the popup and communicates success to parent window
@@ -742,7 +755,7 @@ const handleCallback = catchAsync(
           </html>
         `;
         
-        return res.send(htmlResponse);
+        return res.send(generateSuccessHTML());
       } catch (userInfoError) {
         logger.error(
           "❌ Failed to get user info, but token exchange was successful:",
@@ -760,7 +773,7 @@ const handleCallback = catchAsync(
 
           // Save the TikTok profile to the database
           try {
-            await saveTikTokProfileToDatabase(userToken, tokenData, userInfo.data.user);
+            await saveTikTokProfileToDatabase(userToken, tokenData, userInfo.data.user, req);
           } catch (saveError: any) {
             logger.error("❌ Failed to save TikTok profile to database:", saveError);
             
@@ -812,7 +825,7 @@ const handleCallback = catchAsync(
               </html>
             `;
             
-            return res.send(errorHtml);
+            return res.send(generateErrorHTML(saveError.message));
           }
 
           // Return HTML that closes the popup and communicates success to parent window
@@ -863,7 +876,7 @@ const handleCallback = catchAsync(
             </html>
           `;
           
-          return res.send(htmlResponse);
+          return res.send(generateSuccessHTML());
         } catch (basicUserInfoError) {
           logger.error(
             "❌ Failed to get basic user info as well:",
@@ -898,7 +911,7 @@ const handleCallback = catchAsync(
 
         // Save the TikTok profile to the database
         try {
-          await saveTikTokProfileToDatabase(userToken, tokenData, minimalUserInfo);
+          await saveTikTokProfileToDatabase(userToken, tokenData, minimalUserInfo, req);
         } catch (saveError: any) {
           logger.error("❌ Failed to save TikTok profile to database:", saveError);
           
@@ -950,7 +963,7 @@ const handleCallback = catchAsync(
             </html>
           `;
           
-          return res.send(errorHtml);
+          return res.send(generateErrorHTML(saveError.message));
         }
 
         // Return HTML that closes the popup and communicates success to parent window
@@ -1001,7 +1014,7 @@ const handleCallback = catchAsync(
           </html>
         `;
         
-        return res.send(htmlResponse);
+        return res.send(generateSuccessHTML());
       }
     } catch (error) {
       logger.error("TikTok callback error:", error);
@@ -1622,35 +1635,138 @@ const disconnectTikTokProfile = catchAsync(
   }
 );
 
+// Helper function to generate success HTML
+function generateSuccessHTML() {
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>TikTok Connected Successfully</title>
+      <meta charset="utf-8">
+      <style>
+        body { 
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          color: white;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          height: 100vh;
+          margin: 0;
+          text-align: center;
+        }
+        .container {
+          background: rgba(255,255,255,0.1);
+          padding: 2rem;
+          border-radius: 1rem;
+          backdrop-filter: blur(10px);
+          box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+        }
+        .success-icon {
+          font-size: 3rem;
+          margin-bottom: 1rem;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="success-icon">✅</div>
+        <h2>TikTok Connected Successfully!</h2>
+        <p>This window will close automatically...</p>
+      </div>
+      <script src="/tiktok-success.js"></script>
+    </body>
+    </html>
+  `;
+}
+
+// Helper function to generate error HTML
+function generateErrorHTML(errorMessage: string) {
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>TikTok Connection Error</title>
+      <meta charset="utf-8">
+      <style>
+        body { 
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          background: linear-gradient(135deg, #e53e3e 0%, #c53030 100%);
+          color: white;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          height: 100vh;
+          margin: 0;
+          text-align: center;
+        }
+        .container {
+          background: rgba(255,255,255,0.1);
+          padding: 2rem;
+          border-radius: 1rem;
+          backdrop-filter: blur(10px);
+          box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+        }
+        .error-icon {
+          font-size: 3rem;
+          margin-bottom: 1rem;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="error-icon">❌</div>
+        <h2>Connection Failed</h2>
+        <p>${errorMessage}</p>
+        <p><small>This window will close automatically...</small></p>
+      </div>
+      <script src="/tiktok-error.js"></script>
+    </body>
+    </html>
+  `;
+}
+
 // Helper function to save TikTok profile to database
-async function saveTikTokProfileToDatabase(userToken: string, tokenData: any, userInfo: any) {
+async function saveTikTokProfileToDatabase(userToken: string, tokenData: any, userInfo: any, req?: any) {
   try {
     logger.info("💾 Saving TikTok profile to database...");
     logger.info(`🔍 User token received: ${userToken ? 'Present' : 'Empty'}`);
     
-    // Check if we have a user token
-    if (!userToken || userToken.trim() === '') {
-      logger.error("❌ No user token provided - cannot save profile without authenticated user");
-      throw new Error("User authentication required to save TikTok profile");
+    let userId = null;
+    
+    // Try to get user ID from token first
+    if (userToken && userToken.trim() !== '') {
+      const jwt = require('jsonwebtoken');
+      try {
+        const decoded = jwt.decode(userToken);
+        userId = decoded?.sub;
+        logger.info(`🔍 Decoded JWT - User ID: ${userId}`);
+      } catch (jwtError) {
+        logger.error("❌ Failed to decode JWT token:", jwtError);
+      }
     }
     
-    // Get user ID from the userToken (JWT)
-    const jwt = require('jsonwebtoken');
-    let decoded;
-    let userId;
-    
-    try {
-      decoded = jwt.decode(userToken);
-      userId = decoded?.sub;
-      logger.info(`🔍 Decoded JWT - User ID: ${userId}`);
-    } catch (jwtError) {
-      logger.error("❌ Failed to decode JWT token:", jwtError);
-      throw new Error("Invalid user token");
+    // If no user ID from token, try to get it from request session/cookies
+    if (!userId && req) {
+      // Check if there's an Authorization header
+      const authHeader = req.headers.authorization;
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        const token = authHeader.substring(7);
+        try {
+          const jwt = require('jsonwebtoken');
+          const decoded = jwt.decode(token);
+          userId = decoded?.sub;
+          logger.info(`🔍 Found user ID from Authorization header: ${userId}`);
+        } catch (e) {
+          logger.warn("❌ Failed to decode Authorization header token");
+        }
+      }
     }
     
+    // If still no user ID, this means TikTok auth was initiated without a logged-in user
     if (!userId) {
-      logger.error("❌ Could not extract user ID from token");
-      throw new Error("Invalid user token - no user ID found");
+      logger.error("❌ No authenticated user found - TikTok connection requires a logged-in user");
+      throw new Error("You must be logged in to connect your TikTok account. Please log in first and try again.");
     }
     
     // Extract TikTok user ID from access token
