@@ -7,6 +7,7 @@ import { AuthenticatedRequest } from "../middleware/authMiddleware";
 import { tiktokService } from "../services/tiktokService";
 import { supabase, supabaseAdmin } from "../config/supabase";
 import crypto from "crypto";
+import jwt from "jsonwebtoken";
 
 // Helper function to generate PKCE code verifier and challenge
 function generatePKCE() {
@@ -1777,9 +1778,8 @@ async function saveTikTokProfileToDatabase(userToken: string, tokenData: any, us
     
     // Try to get user ID from token first
     if (userToken && userToken.trim() !== '') {
-      const jwt = require('jsonwebtoken');
       try {
-        const decoded = jwt.decode(userToken);
+        const decoded = jwt.decode(userToken) as any;
         userId = decoded?.sub;
         logger.info(`🔍 Decoded JWT - User ID: ${userId}`);
       } catch (jwtError) {
@@ -1794,8 +1794,7 @@ async function saveTikTokProfileToDatabase(userToken: string, tokenData: any, us
       if (authHeader && authHeader.startsWith('Bearer ')) {
         const token = authHeader.substring(7);
         try {
-          const jwt = require('jsonwebtoken');
-          const decoded = jwt.decode(token);
+          const decoded = jwt.decode(token) as any;
           userId = decoded?.sub;
           logger.info(`🔍 Found user ID from Authorization header: ${userId}`);
         } catch (e) {
@@ -1824,7 +1823,7 @@ async function saveTikTokProfileToDatabase(userToken: string, tokenData: any, us
     const username = userInfo.display_name || `tiktok_user_${tikTokUserId.substring(0, 8)}`;
     
     const profileData = {
-      user_id: userId,
+      user_id: userId as string,
       tiktok_user_id: tikTokUserId,
       username: username,
       display_name: userInfo.display_name || username,
@@ -1843,7 +1842,7 @@ async function saveTikTokProfileToDatabase(userToken: string, tokenData: any, us
     const { data: existingProfile } = await supabase
       .from("tiktok_profiles")
       .select("*")
-      .eq("user_id", userId)
+      .eq("user_id", userId as string)
       .maybeSingle();
     
     let result;
@@ -1853,7 +1852,7 @@ async function saveTikTokProfileToDatabase(userToken: string, tokenData: any, us
       result = await supabase
         .from("tiktok_profiles")
         .update(profileData)
-        .eq("user_id", userId)
+        .eq("user_id", userId as string)
         .select()
         .single();
     } else {
