@@ -511,7 +511,61 @@ const handleCallback = catchAsync(
         is_verified: false,
       };
       
-      await saveTikTokProfileToDatabase(userToken, mockTokenData, mockUserInfo);
+      try {
+        await saveTikTokProfileToDatabase(userToken, mockTokenData, mockUserInfo);
+      } catch (saveError: any) {
+        logger.error("❌ Failed to save mock TikTok profile to database:", saveError);
+        
+        // Return error HTML instead of success
+        const errorHtml = `
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <title>TikTok Connection Error</title>
+            <meta charset="utf-8">
+            <style>
+              body { 
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                background: linear-gradient(135deg, #e53e3e 0%, #c53030 100%);
+                color: white;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                height: 100vh;
+                margin: 0;
+                text-align: center;
+              }
+              .container {
+                background: rgba(255,255,255,0.1);
+                padding: 2rem;
+                border-radius: 1rem;
+                backdrop-filter: blur(10px);
+                box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+              }
+              .error-icon {
+                font-size: 3rem;
+                margin-bottom: 1rem;
+              }
+            </style>
+          </head>
+          <body>
+            <div class="container">
+              <div class="error-icon">❌</div>
+              <h2>Connection Failed</h2>
+              <p>Failed to save TikTok profile. Please try again.</p>
+              <p><small>Error: ${saveError.message}</small></p>
+            </div>
+            <script>
+              setTimeout(() => {
+                window.close();
+              }, 3000);
+            </script>
+          </body>
+          </html>
+        `;
+        
+        return res.send(errorHtml);
+      }
 
       // Return HTML that closes the popup and communicates success to parent window
       const htmlResponse = `
@@ -584,7 +638,61 @@ const handleCallback = catchAsync(
         logger.info(`✅ User info: ${JSON.stringify(userInfo)}`);
 
         // Save the TikTok profile to the database
-        await saveTikTokProfileToDatabase(userToken, tokenData, userInfo.data.user);
+        try {
+          await saveTikTokProfileToDatabase(userToken, tokenData, userInfo.data.user);
+        } catch (saveError: any) {
+          logger.error("❌ Failed to save TikTok profile to database:", saveError);
+          
+          // Return error HTML instead of success
+          const errorHtml = `
+            <!DOCTYPE html>
+            <html>
+            <head>
+              <title>TikTok Connection Error</title>
+              <meta charset="utf-8">
+              <style>
+                body { 
+                  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                  background: linear-gradient(135deg, #e53e3e 0%, #c53030 100%);
+                  color: white;
+                  display: flex;
+                  justify-content: center;
+                  align-items: center;
+                  height: 100vh;
+                  margin: 0;
+                  text-align: center;
+                }
+                .container {
+                  background: rgba(255,255,255,0.1);
+                  padding: 2rem;
+                  border-radius: 1rem;
+                  backdrop-filter: blur(10px);
+                  box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+                }
+                .error-icon {
+                  font-size: 3rem;
+                  margin-bottom: 1rem;
+                }
+              </style>
+            </head>
+            <body>
+              <div class="container">
+                <div class="error-icon">❌</div>
+                <h2>Connection Failed</h2>
+                <p>Failed to save TikTok profile. Please try again.</p>
+                <p><small>Error: ${saveError.message}</small></p>
+              </div>
+              <script>
+                setTimeout(() => {
+                  window.close();
+                }, 3000);
+              </script>
+            </body>
+            </html>
+          `;
+          
+          return res.send(errorHtml);
+        }
 
         // Return HTML that closes the popup and communicates success to parent window
         const htmlResponse = `
@@ -651,7 +759,61 @@ const handleCallback = catchAsync(
           logger.info(`✅ Basic user info: ${JSON.stringify(userInfo)}`);
 
           // Save the TikTok profile to the database
-          await saveTikTokProfileToDatabase(userToken, tokenData, userInfo.data.user);
+          try {
+            await saveTikTokProfileToDatabase(userToken, tokenData, userInfo.data.user);
+          } catch (saveError: any) {
+            logger.error("❌ Failed to save TikTok profile to database:", saveError);
+            
+            // Return error HTML instead of success
+            const errorHtml = `
+              <!DOCTYPE html>
+              <html>
+              <head>
+                <title>TikTok Connection Error</title>
+                <meta charset="utf-8">
+                <style>
+                  body { 
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                    background: linear-gradient(135deg, #e53e3e 0%, #c53030 100%);
+                    color: white;
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    height: 100vh;
+                    margin: 0;
+                    text-align: center;
+                  }
+                  .container {
+                    background: rgba(255,255,255,0.1);
+                    padding: 2rem;
+                    border-radius: 1rem;
+                    backdrop-filter: blur(10px);
+                    box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+                  }
+                  .error-icon {
+                    font-size: 3rem;
+                    margin-bottom: 1rem;
+                  }
+                </style>
+              </head>
+              <body>
+                <div class="container">
+                  <div class="error-icon">❌</div>
+                  <h2>Connection Failed</h2>
+                  <p>Failed to save TikTok profile. Please try again.</p>
+                  <p><small>Error: ${saveError.message}</small></p>
+                </div>
+                <script>
+                  setTimeout(() => {
+                    window.close();
+                  }, 3000);
+                </script>
+              </body>
+              </html>
+            `;
+            
+            return res.send(errorHtml);
+          }
 
           // Return HTML that closes the popup and communicates success to parent window
           const htmlResponse = `
@@ -735,7 +897,61 @@ const handleCallback = catchAsync(
         );
 
         // Save the TikTok profile to the database
-        await saveTikTokProfileToDatabase(userToken, tokenData, minimalUserInfo);
+        try {
+          await saveTikTokProfileToDatabase(userToken, tokenData, minimalUserInfo);
+        } catch (saveError: any) {
+          logger.error("❌ Failed to save TikTok profile to database:", saveError);
+          
+          // Return error HTML instead of success
+          const errorHtml = `
+            <!DOCTYPE html>
+            <html>
+            <head>
+              <title>TikTok Connection Error</title>
+              <meta charset="utf-8">
+              <style>
+                body { 
+                  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                  background: linear-gradient(135deg, #e53e3e 0%, #c53030 100%);
+                  color: white;
+                  display: flex;
+                  justify-content: center;
+                  align-items: center;
+                  height: 100vh;
+                  margin: 0;
+                  text-align: center;
+                }
+                .container {
+                  background: rgba(255,255,255,0.1);
+                  padding: 2rem;
+                  border-radius: 1rem;
+                  backdrop-filter: blur(10px);
+                  box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+                }
+                .error-icon {
+                  font-size: 3rem;
+                  margin-bottom: 1rem;
+                }
+              </style>
+            </head>
+            <body>
+              <div class="container">
+                <div class="error-icon">❌</div>
+                <h2>Connection Failed</h2>
+                <p>Failed to save TikTok profile. Please try again.</p>
+                <p><small>Error: ${saveError.message}</small></p>
+              </div>
+              <script>
+                setTimeout(() => {
+                  window.close();
+                }, 3000);
+              </script>
+            </body>
+            </html>
+          `;
+          
+          return res.send(errorHtml);
+        }
 
         // Return HTML that closes the popup and communicates success to parent window
         const htmlResponse = `
@@ -1410,15 +1626,31 @@ const disconnectTikTokProfile = catchAsync(
 async function saveTikTokProfileToDatabase(userToken: string, tokenData: any, userInfo: any) {
   try {
     logger.info("💾 Saving TikTok profile to database...");
+    logger.info(`🔍 User token received: ${userToken ? 'Present' : 'Empty'}`);
+    
+    // Check if we have a user token
+    if (!userToken || userToken.trim() === '') {
+      logger.error("❌ No user token provided - cannot save profile without authenticated user");
+      throw new Error("User authentication required to save TikTok profile");
+    }
     
     // Get user ID from the userToken (JWT)
     const jwt = require('jsonwebtoken');
-    const decoded = jwt.decode(userToken);
-    const userId = decoded?.sub;
+    let decoded;
+    let userId;
+    
+    try {
+      decoded = jwt.decode(userToken);
+      userId = decoded?.sub;
+      logger.info(`🔍 Decoded JWT - User ID: ${userId}`);
+    } catch (jwtError) {
+      logger.error("❌ Failed to decode JWT token:", jwtError);
+      throw new Error("Invalid user token");
+    }
     
     if (!userId) {
       logger.error("❌ Could not extract user ID from token");
-      return;
+      throw new Error("Invalid user token - no user ID found");
     }
     
     // Extract TikTok user ID from access token
