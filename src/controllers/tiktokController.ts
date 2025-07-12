@@ -1677,6 +1677,175 @@ const disconnectTikTokProfile = catchAsync(
   }
 );
 
+const getUserTikTokAccounts = catchAsync(
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    logger.info("🔍 getUserTikTokAccounts - Request received");
+    logger.info("🔍 getUserTikTokAccounts - User:", req.user?.id);
+
+    if (!req.user) {
+      return next(new CustomError("User authentication required", 401));
+    }
+
+    try {
+      // Get all TikTok accounts for the user
+      const { data: accounts, error } = await supabase
+        .from("tiktok_profiles")
+        .select("*")
+        .eq("user_id", req.user.id)
+        .order("is_primary", { ascending: false })
+        .order("created_at", { ascending: true });
+
+      if (error) {
+        logger.error("❌ Error fetching TikTok accounts:", error);
+        throw error;
+      }
+
+      logger.info(`✅ Found ${accounts?.length || 0} TikTok accounts for user`);
+      return res.status(200).json({
+        status: "success",
+        data: {
+          accounts: accounts || [],
+          count: accounts?.length || 0,
+        },
+      });
+    } catch (error) {
+      logger.error("❌ Get TikTok accounts error:", error);
+      return next(new CustomError("Failed to fetch TikTok accounts", 500));
+    }
+  }
+);
+
+const setPrimaryTikTokAccount = catchAsync(
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    logger.info("🔍 setPrimaryTikTokAccount - Request received");
+    logger.info("🔍 setPrimaryTikTokAccount - User:", req.user?.id);
+
+    if (!req.user) {
+      return next(new CustomError("User authentication required", 401));
+    }
+
+    const { accountId } = req.body;
+
+    if (!accountId) {
+      return next(new CustomError("Account ID is required", 400));
+    }
+
+    try {
+      // Verify the account belongs to the user
+      const { data: account, error: fetchError } = await supabase
+        .from("tiktok_profiles")
+        .select("*")
+        .eq("id", accountId)
+        .eq("user_id", req.user.id)
+        .single();
+
+      if (fetchError || !account) {
+        logger.error("❌ Account not found or doesn't belong to user");
+        return res.status(404).json({
+          status: "error",
+          message: "TikTok account not found or doesn't belong to you",
+        });
+      }
+
+      // Use the database function to set primary account
+      const { error: setPrimaryError } = await supabase.rpc(
+        "set_primary_tiktok_account",
+        {
+          account_uuid: accountId,
+          user_uuid: req.user.id,
+        }
+      );
+
+      if (setPrimaryError) {
+        logger.error("❌ Error setting primary account:", setPrimaryError);
+        throw setPrimaryError;
+      }
+
+      logger.info("✅ Primary TikTok account updated successfully");
+      return res.status(200).json({
+        status: "success",
+        message: "Primary TikTok account updated successfully",
+      });
+    } catch (error) {
+      logger.error("❌ Set primary TikTok account error:", error);
+      return next(new CustomError("Failed to set primary TikTok account", 500));
+    }
+  }
+);
+
+const deleteTikTokAccount = catchAsync(
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    logger.info("🔍 deleteTikTokAccount - Request received");
+    logger.info("🔍 deleteTikTokAccount - User:", req.user?.id);
+
+    if (!req.user) {
+      return next(new CustomError("User authentication required", 401));
+    }
+
+    const { id: accountId } = req.params;
+
+    if (!accountId) {
+      return next(new CustomError("Account ID is required", 400));
+    }
+
+    try {
+      // Verify the account belongs to the user
+      const { data: account, error: fetchError } = await supabase
+        .from("tiktok_profiles")
+        .select("*")
+        .eq("id", accountId)
+        .eq("user_id", req.user.id)
+        .single();
+
+      if (fetchError || !account) {
+        logger.error("❌ Account not found or doesn't belong to user");
+        return res.status(404).json({
+          status: "error",
+          message: "TikTok account not found or doesn't belong to you",
+        });
+      }
+
+      // Check if this is the only account - don't allow deletion if it's the last one
+      const { data: allAccounts, error: countError } = await supabase
+        .from("tiktok_profiles")
+        .select("id")
+        .eq("user_id", req.user.id);
+
+      if (countError) {
+        throw countError;
+      }
+
+      if (allAccounts && allAccounts.length <= 1) {
+        return res.status(400).json({
+          status: "error",
+          message: "Cannot delete your only TikTok account. Connect another account first.",
+        });
+      }
+
+      // Delete the account
+      const { error: deleteError } = await supabase
+        .from("tiktok_profiles")
+        .delete()
+        .eq("id", accountId)
+        .eq("user_id", req.user.id);
+
+      if (deleteError) {
+        logger.error("❌ Error deleting TikTok account:", deleteError);
+        throw deleteError;
+      }
+
+      logger.info("✅ TikTok account deleted successfully");
+      return res.status(200).json({
+        status: "success",
+        message: "TikTok account deleted successfully",
+      });
+    } catch (error) {
+      logger.error("❌ Delete TikTok account error:", error);
+      return next(new CustomError("Failed to delete TikTok account", 500));
+    }
+  }
+);
+
 // Helper function to generate success HTML
 function generateSuccessHTML() {
   return `
@@ -1929,4 +2098,7 @@ export const tiktokController = {
   scrapeVideoData,
   updateRedirectUri,
   disconnectTikTokProfile,
+  getUserTikTokAccounts,
+  setPrimaryTikTokAccount,
+  deleteTikTokAccount,
 };
