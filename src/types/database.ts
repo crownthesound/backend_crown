@@ -414,6 +414,8 @@ export type Database = {
           user_id: string;
           username: string;
           video_count: number | null;
+          is_primary: boolean | null;
+          account_name: string | null;
         };
         Insert: {
           access_token?: string | null;
@@ -432,6 +434,8 @@ export type Database = {
           user_id: string;
           username: string;
           video_count?: number | null;
+          is_primary?: boolean | null;
+          account_name?: string | null;
         };
         Update: {
           access_token?: string | null;
@@ -450,12 +454,14 @@ export type Database = {
           user_id?: string;
           username?: string;
           video_count?: number | null;
+          is_primary?: boolean | null;
+          account_name?: string | null;
         };
         Relationships: [
           {
             foreignKeyName: "tiktok_profiles_user_id_fkey";
             columns: ["user_id"];
-            isOneToOne: true;
+            isOneToOne: false;
             referencedRelation: "profiles";
             referencedColumns: ["id"];
           }
@@ -623,6 +629,28 @@ export type Database = {
           shares: number;
           submission_date: string;
         }[];
+      };
+      get_user_tiktok_accounts: {
+        Args: { user_uuid: string };
+        Returns: {
+          id: string;
+          tiktok_user_id: string;
+          username: string;
+          display_name: string;
+          account_name: string;
+          avatar_url: string;
+          is_primary: boolean;
+          follower_count: number;
+          following_count: number;
+          likes_count: number;
+          video_count: number;
+          is_verified: boolean;
+          created_at: string;
+        }[];
+      };
+      set_primary_tiktok_account: {
+        Args: { account_uuid: string; user_uuid: string };
+        Returns: boolean;
       };
       update_user_role: {
         Args: {
