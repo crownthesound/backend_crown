@@ -1724,12 +1724,21 @@ function generateSuccessHTML() {
 
 // Helper function to generate error HTML
 function generateErrorHTML(errorMessage: string) {
+  // Check if this is a user-friendly error message vs technical error
+  const isUserFriendlyError = errorMessage.includes("already connected to another user") || 
+                              errorMessage.includes("must be logged in") ||
+                              errorMessage.includes("contact support");
+  
+  const displayMessage = isUserFriendlyError ? errorMessage : "Connection failed. Please try again.";
+  const showTechnicalDetails = !isUserFriendlyError;
+  
   return `
     <!DOCTYPE html>
     <html>
     <head>
       <title>TikTok Connection Error</title>
       <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1">
       <style>
         body { 
           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -1738,9 +1747,10 @@ function generateErrorHTML(errorMessage: string) {
           display: flex;
           justify-content: center;
           align-items: center;
-          height: 100vh;
+          min-height: 100vh;
           margin: 0;
           text-align: center;
+          padding: 1rem;
         }
         .container {
           background: rgba(255,255,255,0.1);
@@ -1748,10 +1758,31 @@ function generateErrorHTML(errorMessage: string) {
           border-radius: 1rem;
           backdrop-filter: blur(10px);
           box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+          max-width: 400px;
+          width: 100%;
         }
         .error-icon {
           font-size: 3rem;
           margin-bottom: 1rem;
+        }
+        .error-message {
+          font-size: 1rem;
+          line-height: 1.5;
+          margin-bottom: 1rem;
+        }
+        .technical-details {
+          font-size: 0.85rem;
+          opacity: 0.8;
+          margin-top: 1rem;
+          padding: 1rem;
+          background: rgba(0,0,0,0.2);
+          border-radius: 0.5rem;
+          word-break: break-word;
+        }
+        .close-info {
+          font-size: 0.9rem;
+          opacity: 0.9;
+          margin-top: 1.5rem;
         }
       </style>
     </head>
@@ -1759,8 +1790,9 @@ function generateErrorHTML(errorMessage: string) {
       <div class="container">
         <div class="error-icon">❌</div>
         <h2>Connection Failed</h2>
-        <p>${errorMessage}</p>
-        <p><small>This window will close automatically...</small></p>
+        <div class="error-message">${displayMessage}</div>
+        ${showTechnicalDetails ? `<div class="technical-details">Error details: ${errorMessage}</div>` : ''}
+        <div class="close-info">This window will close automatically...</div>
       </div>
       <script src="/tiktok-error.js"></script>
     </body>
@@ -1867,6 +1899,12 @@ async function saveTikTokProfileToDatabase(userToken: string, tokenData: any, us
     
     if (result.error) {
       logger.error("❌ Database operation failed:", result.error);
+      
+      // Handle duplicate key constraint error for TikTok user ID
+      if (result.error.code === '23505' && result.error.message?.includes('tiktok_user_id')) {
+        throw new Error("This TikTok account is already connected to another user account. Please use a different TikTok account or contact support if you believe this is an error.");
+      }
+      
       throw result.error;
     }
     
