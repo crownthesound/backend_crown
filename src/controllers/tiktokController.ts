@@ -1782,22 +1782,10 @@ const setPrimaryTikTokAccount = catchAsync(
 
       logger.info(`🔄 Setting account ${accountId} as primary for user ${req.user.id}`);
 
-      // Use direct database operations for better control
-      logger.info("🔄 Step 1: Set ALL accounts to non-primary for this user");
-      const { error: unsetAllError } = await supabaseAdmin
+      // Step 1: Set selected account as primary
+      const { error: setPrimaryError } = await supabase
         .from("tiktok_profiles")
-        .update({ is_primary: false, updated_at: new Date().toISOString() })
-        .eq("user_id", req.user.id);
-
-      if (unsetAllError) {
-        logger.error("❌ Error unsetting all accounts as non-primary:", unsetAllError);
-        throw unsetAllError;
-      }
-
-      logger.info("🔄 Step 2: Set selected account as primary");
-      const { error: setPrimaryError } = await supabaseAdmin
-        .from("tiktok_profiles")
-        .update({ is_primary: true, updated_at: new Date().toISOString() })
+        .update({ is_primary: true })
         .eq("id", accountId)
         .eq("user_id", req.user.id);
 
@@ -1806,60 +1794,16 @@ const setPrimaryTikTokAccount = catchAsync(
         throw setPrimaryError;
       }
 
-      // Step 3: Verify the operation was successful (with retry for timing issues)
-      logger.info("🔄 Step 3: Verifying primary account was set correctly");
-      
-      let verificationSuccess = false;
-      let retryCount = 0;
-      const maxRetries = 3;
-      
-      while (!verificationSuccess && retryCount < maxRetries) {
-        // Small delay to allow database operations to complete
-        if (retryCount > 0) {
-          await new Promise(resolve => setTimeout(resolve, 100));
-        }
-        
-        const { data: primaryCheck, error: checkError } = await supabase
-          .from("tiktok_profiles")
-          .select("id, username, is_primary")
-          .eq("user_id", req.user.id)
-          .eq("is_primary", true);
+      // Step 2: Set all other accounts as non-primary
+      const { error: unsetOthersError } = await supabase
+        .from("tiktok_profiles")
+        .update({ is_primary: false })
+        .eq("user_id", req.user.id)
+        .neq("id", accountId);
 
-        if (checkError) {
-          logger.error("❌ Error verifying primary account:", checkError);
-          throw checkError;
-        }
-
-        // Check if verification passed
-        if (primaryCheck && primaryCheck.length === 1 && primaryCheck[0].id === accountId) {
-          verificationSuccess = true;
-          logger.info("✅ Primary account verification successful on attempt", retryCount + 1);
-        } else {
-          retryCount++;
-          logger.warn(`⚠️ Primary account verification attempt ${retryCount} failed:`, {
-            expected: accountId,
-            actual: primaryCheck,
-            primaryCount: primaryCheck?.length || 0,
-          });
-          
-          if (retryCount >= maxRetries) {
-            // On final failure, log detailed info but don't fail the operation
-            logger.error("❌ Primary account verification failed after all retries:", {
-              expected: accountId,
-              actual: primaryCheck,
-              allAccounts: primaryCheck,
-            });
-            
-            // Check if our target account is actually primary
-            const targetAccount = primaryCheck?.find(acc => acc.id === accountId);
-            if (targetAccount && targetAccount.is_primary) {
-              logger.info("✅ Target account is primary, treating as success despite verification issues");
-              verificationSuccess = true;
-            } else {
-              throw new Error("Failed to set primary account - verification failed after retries");
-            }
-          }
-        }
+      if (unsetOthersError) {
+        logger.error("❌ Error unsetting other accounts:", unsetOthersError);
+        throw unsetOthersError;
       }
 
       logger.info("✅ Primary TikTok account updated successfully");
@@ -1870,29 +1814,9 @@ const setPrimaryTikTokAccount = catchAsync(
     } catch (error: unknown) {
       logger.error("❌ Set primary TikTok account error:", error);
       
-      // Provide more specific error messages
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      
-      if (errorMessage.includes("verification failed")) {
-        return res.status(500).json({
-          status: "error",
-          message: "Account switching verification failed. Please try again.",
-          details: errorMessage,
-        });
-      }
-      
-      if (errorMessage.includes("not found")) {
-        return res.status(404).json({
-          status: "error",
-          message: "TikTok account not found or doesn't belong to you.",
-          details: errorMessage,
-        });
-      }
-      
       return res.status(500).json({
         status: "error",
         message: "Failed to set primary TikTok account. Please try again.",
-        details: errorMessage,
       });
     }
   }
