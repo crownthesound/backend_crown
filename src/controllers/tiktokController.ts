@@ -37,8 +37,52 @@ const clearTikTokSession = catchAsync(
     try {
       // Check if we have valid TikTok configuration
       if (!config.tiktok.clientKey || config.tiktok.clientKey === "") {
-        logger.warn("TikTok Clear Session - No client key configured, using fallback");
-        throw new Error("TikTok client key not configured");
+        logger.error("TikTok Clear Session - No client key configured!");
+        
+        // Return error page instead of fallback
+        const errorHtml = `
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <title>TikTok Configuration Error</title>
+            <meta charset="utf-8">
+            <style>
+              body { 
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                background: linear-gradient(135deg, #e53e3e 0%, #c53030 100%);
+                color: white;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                height: 100vh;
+                margin: 0;
+                text-align: center;
+              }
+              .container {
+                background: rgba(255,255,255,0.1);
+                padding: 2rem;
+                border-radius: 1rem;
+                backdrop-filter: blur(10px);
+                box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+              }
+            </style>
+          </head>
+          <body>
+            <div class="container">
+              <h2>⚠️ Configuration Error</h2>
+              <p>TikTok integration is not properly configured.</p>
+              <p>Please contact support.</p>
+            </div>
+            <script>
+              setTimeout(() => {
+                window.close();
+              }, 3000);
+            </script>
+          </body>
+          </html>
+        `;
+        
+        return res.send(errorHtml);
       }
 
       // Generate PKCE code challenge and verifier
@@ -71,9 +115,50 @@ const clearTikTokSession = catchAsync(
       logger.info(`TikTok Clear Session - Redirect URI: ${config.tiktok.redirectUri}`);
     } catch (error) {
       logger.error("Failed to generate TikTok OAuth URL:", error);
-      // Fallback to our auth endpoint which has its own mock/fallback logic
-      tikTokOAuthUrl = `${backendUrl}/api/v1/tiktok/auth?token=${token}`;
-      logger.info(`TikTok Clear Session - Using fallback URL: ${tikTokOAuthUrl}`);
+      // Return error instead of fallback since we don't use mock mode
+      const errorHtml = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>TikTok OAuth Error</title>
+          <meta charset="utf-8">
+          <style>
+            body { 
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+              background: linear-gradient(135deg, #e53e3e 0%, #c53030 100%);
+              color: white;
+              display: flex;
+              justify-content: center;
+              align-items: center;
+              height: 100vh;
+              margin: 0;
+              text-align: center;
+            }
+            .container {
+              background: rgba(255,255,255,0.1);
+              padding: 2rem;
+              border-radius: 1rem;
+              backdrop-filter: blur(10px);
+              box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+            }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <h2>❌ OAuth Generation Failed</h2>
+            <p>Failed to generate TikTok OAuth URL.</p>
+            <p>Error: ${error.message}</p>
+          </div>
+          <script>
+            setTimeout(() => {
+              window.close();
+            }, 3000);
+          </script>
+        </body>
+        </html>
+      `;
+      
+      return res.send(errorHtml);
     }
 
     // Simple redirect for testing
@@ -192,20 +277,22 @@ const clearTikTokSession = catchAsync(
             console.log("Redirecting to TikTok OAuth...");
             console.log("Target URL: ${tikTokOAuthUrl}");
             
+            var targetUrl = "${tikTokOAuthUrl}";
+            
             // Validate URL before redirect
-            if ("${tikTokOAuthUrl}".includes("undefined") || "${tikTokOAuthUrl}" === "") {
-              console.error("Invalid OAuth URL detected:", "${tikTokOAuthUrl}");
-              document.body.innerHTML = '<div style="text-align:center; padding:50px; color:white;"><h2>Error: Invalid OAuth Configuration</h2><p>URL: ${tikTokOAuthUrl}</p><p>Please check TikTok configuration.</p></div>';
+            if (targetUrl.includes("undefined") || targetUrl === "" || targetUrl.includes("null")) {
+              console.error("Invalid OAuth URL detected:", targetUrl);
+              document.body.innerHTML = '<div style="text-align:center; padding:50px; color:white;"><h2>Error: Invalid OAuth Configuration</h2><p>URL: ' + targetUrl + '</p><p>Please check TikTok configuration.</p></div>';
               return;
             }
             
             try {
-              console.log("Attempting redirect...");
-              window.location.href = "${tikTokOAuthUrl}";
+              console.log("Attempting redirect to:", targetUrl);
+              window.location.href = targetUrl;
             } catch (e) {
               console.error("Redirect failed:", e);
               // Force reload with new URL
-              window.location.replace("${tikTokOAuthUrl}");
+              window.location.replace(targetUrl);
             }
           }, 1500);
           
@@ -213,12 +300,14 @@ const clearTikTokSession = catchAsync(
           setTimeout(function() {
             console.log("Fallback redirect triggered");
             console.log("Current URL:", window.location.href);
+            var targetUrl = "${tikTokOAuthUrl}";
+            
             if (window.location.href.includes('clear-session')) {
               console.log("Still on clear-session page, forcing redirect");
-              if (!"${tikTokOAuthUrl}".includes("undefined") && "${tikTokOAuthUrl}" !== "") {
-                window.location.replace("${tikTokOAuthUrl}");
+              if (!targetUrl.includes("undefined") && targetUrl !== "" && !targetUrl.includes("null")) {
+                window.location.replace(targetUrl);
               } else {
-                document.body.innerHTML = '<div style="text-align:center; padding:50px; color:white;"><h2>Configuration Error</h2><p>TikTok OAuth URL is invalid</p><p>URL: ${tikTokOAuthUrl}</p></div>';
+                document.body.innerHTML = '<div style="text-align:center; padding:50px; color:white;"><h2>Configuration Error</h2><p>TikTok OAuth URL is invalid</p><p>URL: ' + targetUrl + '</p></div>';
               }
             }
           }, 3000);
@@ -226,8 +315,10 @@ const clearTikTokSession = catchAsync(
           // Emergency fallback
           setTimeout(function() {
             console.log("Emergency fallback redirect");
-            if (!"${tikTokOAuthUrl}".includes("undefined") && "${tikTokOAuthUrl}" !== "") {
-              window.location.replace("${tikTokOAuthUrl}");
+            var targetUrl = "${tikTokOAuthUrl}";
+            
+            if (!targetUrl.includes("undefined") && targetUrl !== "" && !targetUrl.includes("null")) {
+              window.location.replace(targetUrl);
             } else {
               document.body.innerHTML = '<div style="text-align:center; padding:50px; color:white;"><h2>Final Error</h2><p>Unable to redirect to TikTok OAuth</p><p>Please check server logs</p></div>';
             }
@@ -324,18 +415,21 @@ const initiateAuth = catchAsync(
 
     // Check if we have a valid TikTok client key
     if (!config.tiktok.clientKey || config.tiktok.clientKey === "") {
-      logger.info("TikTok Auth - Using mock mode because client_key is empty");
-
-      // For testing: Instead of redirecting to TikTok, redirect back to our callback
-      // with a mock code that our callback handler will recognize
-      const mockAuthUrl = `${req.protocol}://${req.get(
-        "host"
-      )}/api/v1/tiktok/auth/callback?code=MOCK_CODE_FOR_TESTING&state=${encodedState}`;
-
-      logger.info(`TikTok Auth - Generated mock URL: ${mockAuthUrl}`);
-
-      // Redirect to mock URL instead of returning JSON
-      return res.redirect(mockAuthUrl);
+      logger.error("TikTok Auth - No client key configured! Please set TIKTOK_CLIENT_KEY environment variable.");
+      
+      const errorMessage = "TikTok integration is not configured. Please contact support.";
+      
+      // For API calls, return error JSON
+      if (req.method === "POST") {
+        return res.status(500).json({
+          status: "error",
+          message: errorMessage,
+          error_code: "TIKTOK_NOT_CONFIGURED"
+        });
+      }
+      
+      // For browser requests, return error HTML
+      return res.send(generateErrorHTML(errorMessage));
     }
 
     // Normal flow with actual TikTok credentials - using only TikTok-supported parameters
@@ -618,134 +712,7 @@ const handleCallback = catchAsync(
       logger.error("❌ Error extracting data from state:", error);
     }
 
-    // Check if we're in mock mode
-    if (code === "MOCK_CODE_FOR_TESTING") {
-      logger.info("TikTok Callback - Using mock data for testing");
-
-      // Save mock TikTok profile to the database
-      const mockTokenData = {
-        access_token: "mock_access_token",
-        refresh_token: "mock_refresh_token",
-        expires_in: 86400
-      };
-      
-      const mockUserInfo = {
-        open_id: "mock_user_id",
-        display_name: "Mock TikTok User",
-        avatar_url: "",
-        follower_count: 100,
-        following_count: 50,
-        likes_count: 1000,
-        video_count: 10,
-        is_verified: false,
-      };
-      
-      try {
-        await saveTikTokProfileToDatabase(userToken, mockTokenData, mockUserInfo, req);
-      } catch (saveError: any) {
-        logger.error("❌ Failed to save mock TikTok profile to database:", saveError);
-        
-        // Return error HTML instead of success
-        const errorHtml = `
-          <!DOCTYPE html>
-          <html>
-          <head>
-            <title>TikTok Connection Error</title>
-            <meta charset="utf-8">
-            <style>
-              body { 
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                background: linear-gradient(135deg, #e53e3e 0%, #c53030 100%);
-                color: white;
-                display: flex;
-                justify-content: center;
-                align-items: center;
-                height: 100vh;
-                margin: 0;
-                text-align: center;
-              }
-              .container {
-                background: rgba(255,255,255,0.1);
-                padding: 2rem;
-                border-radius: 1rem;
-                backdrop-filter: blur(10px);
-                box-shadow: 0 8px 32px rgba(0,0,0,0.1);
-              }
-              .error-icon {
-                font-size: 3rem;
-                margin-bottom: 1rem;
-              }
-            </style>
-          </head>
-          <body>
-            <div class="container">
-              <div class="error-icon">❌</div>
-              <h2>Connection Failed</h2>
-              <p>Failed to save TikTok profile. Please try again.</p>
-              <p><small>Error: ${saveError.message}</small></p>
-            </div>
-            <script>
-              setTimeout(() => {
-                window.close();
-              }, 3000);
-            </script>
-          </body>
-          </html>
-        `;
-        
-        return res.send(generateErrorHTML(saveError.message));
-      }
-
-      // Return HTML that closes the popup and communicates success to parent window
-      const htmlResponse = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <title>TikTok Connected Successfully</title>
-          <meta charset="utf-8">
-          <style>
-            body { 
-              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-              color: white;
-              display: flex;
-              justify-content: center;
-              align-items: center;
-              height: 100vh;
-              margin: 0;
-              text-align: center;
-            }
-            .container {
-              background: rgba(255,255,255,0.1);
-              padding: 2rem;
-              border-radius: 1rem;
-              backdrop-filter: blur(10px);
-              box-shadow: 0 8px 32px rgba(0,0,0,0.1);
-            }
-            .success-icon {
-              font-size: 3rem;
-              margin-bottom: 1rem;
-            }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <div class="success-icon">✅</div>
-            <h2>TikTok Connected Successfully!</h2>
-            <p>This window will close automatically...</p>
-          </div>
-          <script>
-            // Close the popup window after a short delay
-            setTimeout(() => {
-              window.close();
-            }, 1500);
-          </script>
-        </body>
-        </html>
-      `;
-      
-      return res.send(generateSuccessHTML());
-    }
+    // No mock mode - proceed with real TikTok OAuth flow only
 
     try {
       // Real TikTok flow - Exchange code for access token with code verifier
@@ -1389,62 +1356,7 @@ const getUserVideos = catchAsync(
         `🔍 Using TikTok access token: ${accessTokenToUse.substring(0, 20)}...`
       );
 
-      // Check if we're in mock mode
-      if (tiktokAccessToken === "mock_access_token_for_testing") {
-        logger.info("✅ TikTok Videos - Using mock data for testing");
-
-        // Return mock videos data
-        return res.status(200).json({
-          status: "success",
-          data: {
-            videos: [
-              {
-                id: "mock_video_1",
-                title: "My First TikTok Video",
-                cover_image_url:
-                  "https://placehold.co/400x600?text=TikTok+Video+1",
-                share_url: "https://www.tiktok.com/@mockuser/video/1",
-                video_description: "This is a mock video for testing purposes",
-                create_time: new Date().toISOString(),
-                view_count: 1543,
-                like_count: 120,
-                comment_count: 14,
-                share_count: 5,
-              },
-              {
-                id: "mock_video_2",
-                title: "Dancing Challenge",
-                cover_image_url:
-                  "https://placehold.co/400x600?text=TikTok+Video+2",
-                share_url: "https://www.tiktok.com/@mockuser/video/2",
-                video_description:
-                  "Check out my new dance moves! #dance #challenge",
-                create_time: new Date(Date.now() - 86400000).toISOString(),
-                view_count: 4231,
-                like_count: 532,
-                comment_count: 48,
-                share_count: 12,
-              },
-              {
-                id: "mock_video_3",
-                title: "Cooking Tutorial",
-                cover_image_url:
-                  "https://placehold.co/400x600?text=TikTok+Video+3",
-                share_url: "https://www.tiktok.com/@mockuser/video/3",
-                video_description:
-                  "How to make the perfect pancakes #cooking #food",
-                create_time: new Date(Date.now() - 172800000).toISOString(),
-                view_count: 8765,
-                like_count: 976,
-                comment_count: 103,
-                share_count: 45,
-              },
-            ],
-            cursor: "mock_next_cursor",
-            has_more: false,
-          },
-        });
-      }
+      // No mock mode - use real TikTok API only
 
       logger.info(`🔍 Calling TikTok API to get user videos...`);
       try {
