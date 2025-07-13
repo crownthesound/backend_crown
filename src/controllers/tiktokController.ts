@@ -1836,7 +1836,31 @@ const setPrimaryTikTokAccount = catchAsync(
       });
     } catch (error: unknown) {
       logger.error("❌ Set primary TikTok account error:", error);
-      return next(new CustomError("Failed to set primary TikTok account", 500));
+      
+      // Provide more specific error messages
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      
+      if (errorMessage.includes("verification failed")) {
+        return res.status(500).json({
+          status: "error",
+          message: "Account switching verification failed. Please try again.",
+          details: errorMessage,
+        });
+      }
+      
+      if (errorMessage.includes("not found")) {
+        return res.status(404).json({
+          status: "error",
+          message: "TikTok account not found or doesn't belong to you.",
+          details: errorMessage,
+        });
+      }
+      
+      return res.status(500).json({
+        status: "error",
+        message: "Failed to set primary TikTok account. Please try again.",
+        details: errorMessage,
+      });
     }
   }
 );
@@ -1960,6 +1984,128 @@ const validateTikTokAccountSession = catchAsync(
     } catch (error: unknown) {
       logger.error("❌ Validate TikTok account session error:", error);
       return next(new CustomError("Failed to validate TikTok account session", 500));
+    }
+  }
+);
+
+const establishTikTokSession = catchAsync(
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    logger.info("🔍 establishTikTokSession - Request received");
+    logger.info("🔍 establishTikTokSession - User:", req.user?.id);
+
+    if (!req.user) {
+      return next(new CustomError("User authentication required", 401));
+    }
+
+    const { accountId } = req.params;
+
+    if (!accountId) {
+      return next(new CustomError("Account ID is required", 400));
+    }
+
+    try {
+      // Get the specific account
+      const { data: account, error: fetchError } = await supabase
+        .from("tiktok_profiles")
+        .select("*")
+        .eq("id", accountId)
+        .eq("user_id", req.user.id)
+        .single();
+
+      if (fetchError || !account) {
+        logger.error("❌ Account not found or doesn't belong to user");
+        return res.status(404).json({
+          status: "error",
+          message: "TikTok account not found or doesn't belong to you",
+        });
+      }
+
+      // Validate required token data
+      if (!account.access_token || !account.token_expires_at) {
+        return res.status(400).json({
+          status: "error",
+          message: "TikTok account missing authentication data. Please reconnect the account.",
+        });
+      }
+
+      // Check if token is expired
+      const now = new Date();
+      const expiresAt = new Date(account.token_expires_at);
+      const isExpired = now >= expiresAt;
+
+      if (isExpired) {
+        return res.status(400).json({
+          status: "error",
+          message: "TikTok access token has expired. Please reconnect the account.",
+          details: {
+            expiresAt: account.token_expires_at,
+            currentTime: now.toISOString(),
+          },
+        });
+      }
+
+      // Test the TikTok session by making an API call
+      try {
+        logger.info("🔍 Establishing TikTok session - testing API connectivity");
+        const userInfo = await tiktokService.getUserInfo(account.access_token);
+        
+        if (!userInfo || !userInfo.data || !userInfo.data.user) {
+          throw new Error("Invalid response from TikTok API");
+        }
+
+        const tikTokUser = userInfo.data.user;
+
+        logger.info("✅ TikTok session established successfully");
+        return res.status(200).json({
+          status: "success",
+          message: "TikTok session established successfully",
+          data: {
+            accountId: account.id,
+            tiktokUserId: tikTokUser.open_id,
+            username: tikTokUser.display_name || account.username,
+            avatarUrl: tikTokUser.avatar_url || account.avatar_url,
+            isVerified: tikTokUser.is_verified || account.is_verified,
+            sessionEstablished: true,
+            connectedAt: new Date().toISOString(),
+          },
+        });
+
+      } catch (sessionError: unknown) {
+        logger.error("❌ Failed to establish TikTok session:", sessionError);
+        
+        const errorMessage = sessionError instanceof Error ? sessionError.message : String(sessionError);
+        
+        if (errorMessage.includes("401") || errorMessage.includes("unauthorized") || errorMessage.includes("invalid_token")) {
+          return res.status(400).json({
+            status: "error",
+            message: "TikTok account authentication failed. Please reconnect the account.",
+            details: {
+              reason: "unauthorized",
+              accountId: account.id,
+            },
+          });
+        }
+
+        return res.status(500).json({
+          status: "error",
+          message: "Failed to establish TikTok session. Please try again or reconnect the account.",
+          details: {
+            reason: "session_establishment_failed",
+            error: errorMessage,
+            accountId: account.id,
+          },
+        });
+      }
+
+    } catch (error: unknown) {
+      logger.error("❌ Establish TikTok session error:", error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      
+      return res.status(500).json({
+        status: "error",
+        message: "Failed to establish TikTok session. Please try again.",
+        details: errorMessage,
+      });
     }
   }
 );
@@ -2314,5 +2460,6 @@ export const tiktokController = {
   getUserTikTokAccounts,
   setPrimaryTikTokAccount,
   validateTikTokAccountSession,
+  establishTikTokSession,
   deleteTikTokAccount,
 };
