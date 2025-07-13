@@ -313,6 +313,19 @@ const initiateAuth = catchAsync(
     // Check if this is a POST request (API call) or GET request (direct browser navigation)
     const isApiCall = req.method === "POST";
 
+    // For API calls with force account selection, return session clearing URL first
+    if (forceAccountSelection && !fromClearSession && isApiCall) {
+      logger.info("TikTok Auth - API call with force account selection, returning clear session URL");
+      
+      const clearSessionUrl = `${req.protocol}://${req.get("host")}/api/v1/tiktok/auth/clear-session?token=${encodeURIComponent(tokenToStore)}`;
+      
+      return res.status(200).json({
+        status: "success",
+        clear_session_url: clearSessionUrl,
+        requires_session_clearing: true,
+      });
+    }
+
     if (forceAccountSelection && !fromClearSession && !isApiCall) {
       logger.info("TikTok Auth - Force account selection requested");
 
