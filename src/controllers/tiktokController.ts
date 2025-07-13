@@ -1895,6 +1895,7 @@ function generateSuccessHTML() {
 function generateErrorHTML(errorMessage: string) {
   // Check if this is a user-friendly error message vs technical error
   const isUserFriendlyError = errorMessage.includes("already connected to another user") || 
+                              errorMessage.includes("already connected to your account") ||
                               errorMessage.includes("must be logged in") ||
                               errorMessage.includes("contact support");
   
@@ -2039,32 +2040,40 @@ async function saveTikTokProfileToDatabase(userToken: string, tokenData: any, us
       token_expires_at: new Date(Date.now() + tokenData.expires_in * 1000).toISOString(),
     };
     
-    // Check if profile already exists
+    // Check if this specific TikTok account is already connected to this user
     const { data: existingProfile } = await supabase
       .from("tiktok_profiles")
       .select("*")
       .eq("user_id", userId as string)
+      .eq("tiktok_user_id", tikTokUserId)
       .maybeSingle();
-    
-    let result;
-    if (existingProfile) {
-      // Update existing profile
-      logger.info("🔄 Updating existing TikTok profile...");
-      result = await supabase
-        .from("tiktok_profiles")
-        .update(profileData)
-        .eq("user_id", userId as string)
-        .select()
-        .single();
-    } else {
-      // Insert new profile
-      logger.info("➕ Inserting new TikTok profile...");
-      result = await supabase
-        .from("tiktok_profiles")
-        .insert(profileData)
-        .select()
-        .single();
+      
+    // Also check if this TikTok account is connected to ANY user
+    const { data: existingTikTokAccount } = await supabase
+      .from("tiktok_profiles")
+      .select("user_id")
+      .eq("tiktok_user_id", tikTokUserId)
+      .maybeSingle();
+      
+    // If TikTok account exists for a different user, prevent connection
+    if (existingTikTokAccount && existingTikTokAccount.user_id !== userId) {
+      logger.warn(`❌ TikTok account ${tikTokUserId} is already connected to user ${existingTikTokAccount.user_id}`);
+      throw new Error("This TikTok account is already connected to another user account. Please use a different TikTok account or contact support if you believe this is an error.");
     }
+    
+    // If this exact combination already exists, prevent duplicate
+    if (existingProfile) {
+      logger.warn(`❌ TikTok account ${tikTokUserId} is already connected to user ${userId}`);
+      throw new Error("This TikTok account is already connected to your account. Try connecting a different TikTok account.");
+    }
+    
+    // Insert new profile (we've already checked for duplicates above)
+    logger.info("➕ Inserting new TikTok profile...");
+    const result = await supabase
+      .from("tiktok_profiles")
+      .insert(profileData)
+      .select()
+      .single();
     
     if (result.error) {
       logger.error("❌ Database operation failed:", result.error);
