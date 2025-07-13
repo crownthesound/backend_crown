@@ -1780,18 +1780,53 @@ const setPrimaryTikTokAccount = catchAsync(
         });
       }
 
-      // Use the database function to set primary account
-      const { error: setPrimaryError } = await supabase.rpc(
-        "set_primary_tiktok_account",
-        {
-          account_uuid: accountId,
-          user_uuid: req.user.id,
-        }
-      );
+      logger.info(`🔄 Setting account ${accountId} as primary for user ${req.user.id}`);
+
+      // Step 1: Explicitly unset ALL other accounts as primary for this user
+      logger.info("🔄 Step 1: Unsetting all other accounts as non-primary");
+      const { error: unsetError } = await supabase
+        .from("tiktok_profiles")
+        .update({ is_primary: false, updated_at: new Date().toISOString() })
+        .eq("user_id", req.user.id)
+        .neq("id", accountId);
+
+      if (unsetError) {
+        logger.error("❌ Error unsetting other primary accounts:", unsetError);
+        throw unsetError;
+      }
+
+      // Step 2: Set the selected account as primary
+      logger.info("🔄 Step 2: Setting selected account as primary");
+      const { error: setPrimaryError } = await supabase
+        .from("tiktok_profiles")
+        .update({ is_primary: true, updated_at: new Date().toISOString() })
+        .eq("id", accountId)
+        .eq("user_id", req.user.id);
 
       if (setPrimaryError) {
         logger.error("❌ Error setting primary account:", setPrimaryError);
         throw setPrimaryError;
+      }
+
+      // Step 3: Verify the operation was successful
+      logger.info("🔄 Step 3: Verifying primary account was set correctly");
+      const { data: primaryCheck, error: checkError } = await supabase
+        .from("tiktok_profiles")
+        .select("id, username, is_primary")
+        .eq("user_id", req.user.id)
+        .eq("is_primary", true);
+
+      if (checkError) {
+        logger.error("❌ Error verifying primary account:", checkError);
+        throw checkError;
+      }
+
+      if (!primaryCheck || primaryCheck.length !== 1 || primaryCheck[0].id !== accountId) {
+        logger.error("❌ Primary account verification failed:", {
+          expected: accountId,
+          actual: primaryCheck,
+        });
+        throw new Error("Failed to set primary account - verification failed");
       }
 
       logger.info("✅ Primary TikTok account updated successfully");
@@ -1802,6 +1837,118 @@ const setPrimaryTikTokAccount = catchAsync(
     } catch (error: unknown) {
       logger.error("❌ Set primary TikTok account error:", error);
       return next(new CustomError("Failed to set primary TikTok account", 500));
+    }
+  }
+);
+
+const validateTikTokAccountSession = catchAsync(
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    logger.info("🔍 validateTikTokAccountSession - Request received");
+    logger.info("🔍 validateTikTokAccountSession - User:", req.user?.id);
+
+    if (!req.user) {
+      return next(new CustomError("User authentication required", 401));
+    }
+
+    const { accountId } = req.params;
+
+    if (!accountId) {
+      return next(new CustomError("Account ID is required", 400));
+    }
+
+    try {
+      // Get the specific account
+      const { data: account, error: fetchError } = await supabase
+        .from("tiktok_profiles")
+        .select("*")
+        .eq("id", accountId)
+        .eq("user_id", req.user.id)
+        .single();
+
+      if (fetchError || !account) {
+        logger.error("❌ Account not found or doesn't belong to user");
+        return res.status(404).json({
+          status: "error",
+          message: "TikTok account not found or doesn't belong to you",
+        });
+      }
+
+      // Check if token is expired
+      const now = new Date();
+      const expiresAt = new Date(account.token_expires_at);
+      const isExpired = now >= expiresAt;
+
+      logger.info(`🔍 Token expiry check: expires at ${expiresAt}, now is ${now}, expired: ${isExpired}`);
+
+      if (isExpired) {
+        return res.status(200).json({
+          status: "success",
+          data: {
+            isValid: false,
+            needsRefresh: true,
+            reason: "token_expired",
+            expiresAt: account.token_expires_at,
+          },
+        });
+      }
+
+      // Test the token with a simple TikTok API call
+      try {
+        logger.info("🔍 Testing access token with TikTok API");
+        const userInfo = await tiktokService.getUserInfo(account.access_token);
+        
+        if (userInfo && userInfo.data && userInfo.data.user) {
+          logger.info("✅ TikTok token is valid");
+          return res.status(200).json({
+            status: "success",
+            data: {
+              isValid: true,
+              needsRefresh: false,
+              tiktokUserId: userInfo.data.user.open_id,
+              username: userInfo.data.user.display_name,
+            },
+          });
+        } else {
+          logger.warn("⚠️ TikTok token test returned unexpected response");
+          return res.status(200).json({
+            status: "success",
+            data: {
+              isValid: false,
+              needsRefresh: true,
+              reason: "invalid_response",
+            },
+          });
+        }
+      } catch (tokenError: unknown) {
+        logger.error("❌ TikTok token validation failed:", tokenError);
+        
+        // Check if it's an authorization error
+        const errorMessage = tokenError instanceof Error ? tokenError.message : String(tokenError);
+        if (errorMessage.includes("401") || errorMessage.includes("unauthorized") || errorMessage.includes("invalid_token")) {
+          return res.status(200).json({
+            status: "success",
+            data: {
+              isValid: false,
+              needsRefresh: true,
+              reason: "unauthorized",
+            },
+          });
+        }
+
+        // For other errors, we can't determine token validity
+        return res.status(200).json({
+          status: "success",
+          data: {
+            isValid: null,
+            needsRefresh: false,
+            reason: "validation_failed",
+            error: errorMessage,
+          },
+        });
+      }
+    } catch (error: unknown) {
+      logger.error("❌ Validate TikTok account session error:", error);
+      return next(new CustomError("Failed to validate TikTok account session", 500));
     }
   }
 );
@@ -2155,5 +2302,6 @@ export const tiktokController = {
   disconnectTikTokProfile,
   getUserTikTokAccounts,
   setPrimaryTikTokAccount,
+  validateTikTokAccountSession,
   deleteTikTokAccount,
 };

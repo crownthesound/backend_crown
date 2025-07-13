@@ -28,6 +28,7 @@ router.options("/profile/disconnect", corsHandler);
 router.options("/accounts", corsHandler);
 router.options("/accounts/set-primary", corsHandler);
 router.options("/accounts/:id", corsHandler);
+router.options("/accounts/:id/validate", corsHandler);
 router.options("/videos", corsHandler);
 router.options("/videos/upload", corsHandler);
 
@@ -63,6 +64,7 @@ router.post(
 // Multi-account TikTok API routes
 router.get("/accounts", authMiddleware, tiktokController.getUserTikTokAccounts);
 router.post("/accounts/set-primary", authMiddleware, tiktokController.setPrimaryTikTokAccount);
+router.get("/accounts/:id/validate", authMiddleware, tiktokController.validateTikTokAccountSession);
 router.delete("/accounts/:id", authMiddleware, tiktokController.deleteTikTokAccount);
 router.post("/videos", authMiddleware, tiktokController.getUserVideos); // Changed to POST to match client expectations
 router.post("/videos/upload", authMiddleware, tiktokController.uploadVideo); // Renamed to avoid conflict
