@@ -1874,6 +1874,17 @@ const validateTikTokAccountSession = catchAsync(
       }
 
       // Check if token is expired
+      if (!account.token_expires_at || !account.access_token) {
+        return res.status(200).json({
+          status: "success",
+          data: {
+            isValid: false,
+            needsRefresh: true,
+            reason: "missing_token_data",
+          },
+        });
+      }
+
       const now = new Date();
       const expiresAt = new Date(account.token_expires_at);
       const isExpired = now >= expiresAt;
