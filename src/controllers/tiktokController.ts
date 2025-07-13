@@ -113,7 +113,7 @@ const clearTikTokSession = catchAsync(
       logger.info(`TikTok Clear Session - Generated OAuth URL: ${tikTokOAuthUrl}`);
       logger.info(`TikTok Clear Session - Client Key: ${config.tiktok.clientKey ? 'Present' : 'Missing'}`);
       logger.info(`TikTok Clear Session - Redirect URI: ${config.tiktok.redirectUri}`);
-    } catch (error) {
+    } catch (error: unknown) {
       logger.error("Failed to generate TikTok OAuth URL:", error);
       // Return error instead of fallback since we don't use mock mode
       const errorHtml = `
@@ -708,7 +708,7 @@ const handleCallback = catchAsync(
           userToken ? "Found" : "Not found"
         }`
       );
-    } catch (error) {
+    } catch (error: unknown) {
       logger.error("❌ Error extracting data from state:", error);
     }
 
@@ -1099,7 +1099,7 @@ const handleCallback = catchAsync(
         
         return res.send(generateSuccessHTML());
       }
-    } catch (error) {
+    } catch (error: unknown) {
       logger.error("TikTok callback error:", error);
       return next(
         new CustomError("Failed to complete TikTok authentication", 500)
@@ -1227,7 +1227,7 @@ const saveTikTokProfile = catchAsync(
           profile: result.data,
         },
       });
-    } catch (error) {
+    } catch (error: unknown) {
       logger.error("Save TikTok profile error:", error);
       return next(new CustomError("Failed to save TikTok profile", 500));
     }
@@ -1262,7 +1262,7 @@ const getUserProfile = catchAsync(
           profile,
         },
       });
-    } catch (error) {
+    } catch (error: unknown) {
       logger.error("Get TikTok profile error:", error);
       return next(new CustomError("Failed to fetch TikTok profile", 500));
     }
@@ -1452,7 +1452,7 @@ const getUserVideos = catchAsync(
           },
         });
       }
-    } catch (error) {
+    } catch (error: unknown) {
       logger.error("Get TikTok videos error:", error);
       return next(new CustomError("Failed to fetch TikTok videos", 500));
     }
@@ -1479,7 +1479,7 @@ const uploadVideo = catchAsync(
         status: "success",
         data: result,
       });
-    } catch (error) {
+    } catch (error: unknown) {
       logger.error("Upload TikTok video error:", error);
       return next(new CustomError("Failed to upload video to TikTok", 500));
     }
@@ -1507,7 +1507,7 @@ const getVideoDetails = catchAsync(
           video: videoDetails,
         },
       });
-    } catch (error) {
+    } catch (error: unknown) {
       logger.error("Get TikTok video details error:", error);
       return next(new CustomError("Failed to fetch video details", 500));
     }
@@ -1534,7 +1534,7 @@ const getContestVideos = catchAsync(
           videos,
         },
       });
-    } catch (error) {
+    } catch (error: unknown) {
       logger.error("Get contest videos error:", error);
       return next(new CustomError("Failed to fetch contest videos", 500));
     }
@@ -1558,7 +1558,7 @@ const scrapeVideoData = catchAsync(
           video: videoData,
         },
       });
-    } catch (error) {
+    } catch (error: unknown) {
       logger.error("Scrape video data error:", error);
       return next(new CustomError("Failed to scrape video data", 500));
     }
@@ -1656,7 +1656,7 @@ const disconnectTikTokProfile = catchAsync(
         status: "success",
         message: "TikTok profile disconnected successfully",
       });
-    } catch (error) {
+    } catch (error: unknown) {
       logger.error("❌ Disconnect TikTok profile error:", error);
       return next(new CustomError("Failed to disconnect TikTok profile", 500));
     }
@@ -1694,7 +1694,7 @@ const getUserTikTokAccounts = catchAsync(
           count: accounts?.length || 0,
         },
       });
-    } catch (error) {
+    } catch (error: unknown) {
       logger.error("❌ Get TikTok accounts error:", error);
       return next(new CustomError("Failed to fetch TikTok accounts", 500));
     }
@@ -1752,7 +1752,7 @@ const setPrimaryTikTokAccount = catchAsync(
         status: "success",
         message: "Primary TikTok account updated successfully",
       });
-    } catch (error) {
+    } catch (error: unknown) {
       logger.error("❌ Set primary TikTok account error:", error);
       return next(new CustomError("Failed to set primary TikTok account", 500));
     }
@@ -1825,7 +1825,7 @@ const deleteTikTokAccount = catchAsync(
         status: "success",
         message: "TikTok account deleted successfully",
       });
-    } catch (error) {
+    } catch (error: unknown) {
       logger.error("❌ Delete TikTok account error:", error);
       return next(new CustomError("Failed to delete TikTok account", 500));
     }
@@ -2010,6 +2010,18 @@ async function saveTikTokProfileToDatabase(userToken: string, tokenData: any, us
     // Use a placeholder username if not provided
     const username = userInfo.display_name || `tiktok_user_${tikTokUserId.substring(0, 8)}`;
     
+    // Check if user has any existing TikTok accounts to determine if this should be primary
+    const { data: userAccounts } = await supabase
+      .from("tiktok_profiles")
+      .select("id, is_primary")
+      .eq("user_id", userId as string);
+    
+    // Determine if this should be the primary account (if user has no accounts, or no primary account exists)
+    const shouldBePrimary = !userAccounts || userAccounts.length === 0 || !userAccounts.some(acc => acc.is_primary);
+    
+    logger.info(`🔍 User has ${userAccounts?.length || 0} existing TikTok accounts`);
+    logger.info(`🔍 Setting new account as primary: ${shouldBePrimary}`);
+    
     const profileData = {
       user_id: userId as string,
       tiktok_user_id: tikTokUserId,
@@ -2023,6 +2035,7 @@ async function saveTikTokProfileToDatabase(userToken: string, tokenData: any, us
       access_token: tokenData.access_token,
       refresh_token: tokenData.refresh_token,
       is_verified: userInfo.is_verified || false,
+      is_primary: shouldBePrimary,
       token_expires_at: new Date(Date.now() + tokenData.expires_in * 1000).toISOString(),
     };
     
@@ -2074,7 +2087,7 @@ async function saveTikTokProfileToDatabase(userToken: string, tokenData: any, us
     
     logger.info("✅ TikTok profile saved successfully:", result.data);
     return result.data;
-  } catch (error) {
+  } catch (error: unknown) {
     logger.error("❌ Error saving TikTok profile:", error);
     throw error;
   }
