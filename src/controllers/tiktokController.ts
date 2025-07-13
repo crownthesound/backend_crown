@@ -147,7 +147,7 @@ const clearTikTokSession = catchAsync(
           <div class="container">
             <h2>❌ OAuth Generation Failed</h2>
             <p>Failed to generate TikTok OAuth URL.</p>
-            <p>Error: ${error.message}</p>
+            <p>Error: ${error instanceof Error ? error.message : String(error)}</p>
           </div>
           <script>
             setTimeout(() => {
