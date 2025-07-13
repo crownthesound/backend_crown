@@ -1782,30 +1782,24 @@ const setPrimaryTikTokAccount = catchAsync(
 
       logger.info(`🔄 Setting account ${accountId} as primary for user ${req.user.id}`);
 
-      // Step 1: Explicitly unset ALL other accounts as primary for this user
-      logger.info("🔄 Step 1: Unsetting all other accounts as non-primary");
-      const { error: unsetError } = await supabase
-        .from("tiktok_profiles")
-        .update({ is_primary: false, updated_at: new Date().toISOString() })
-        .eq("user_id", req.user.id)
-        .neq("id", accountId);
+      // Use the database RPC function to set primary account (handles all the logic automatically)
+      logger.info("🔄 Using database RPC function to set primary account");
+      const { data: rpcResult, error: rpcError } = await supabase.rpc("set_primary_tiktok_account", {
+        account_uuid: accountId,
+        user_uuid: req.user.id,
+      });
 
-      if (unsetError) {
-        logger.error("❌ Error unsetting other primary accounts:", unsetError);
-        throw unsetError;
+      if (rpcError) {
+        logger.error("❌ Error calling set_primary_tiktok_account RPC:", rpcError);
+        throw rpcError;
       }
 
-      // Step 2: Set the selected account as primary
-      logger.info("🔄 Step 2: Setting selected account as primary");
-      const { error: setPrimaryError } = await supabase
-        .from("tiktok_profiles")
-        .update({ is_primary: true, updated_at: new Date().toISOString() })
-        .eq("id", accountId)
-        .eq("user_id", req.user.id);
-
-      if (setPrimaryError) {
-        logger.error("❌ Error setting primary account:", setPrimaryError);
-        throw setPrimaryError;
+      if (!rpcResult) {
+        logger.error("❌ RPC function returned false - account doesn't belong to user");
+        return res.status(404).json({
+          status: "error",
+          message: "TikTok account not found or doesn't belong to you",
+        });
       }
 
       // Step 3: Verify the operation was successful (with retry for timing issues)
