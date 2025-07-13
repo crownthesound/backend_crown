@@ -1782,24 +1782,28 @@ const setPrimaryTikTokAccount = catchAsync(
 
       logger.info(`🔄 Setting account ${accountId} as primary for user ${req.user.id}`);
 
-      // Use the database RPC function to set primary account (handles all the logic automatically)
-      logger.info("🔄 Using database RPC function to set primary account");
-      const { data: rpcResult, error: rpcError } = await supabase.rpc("set_primary_tiktok_account", {
-        account_uuid: accountId,
-        user_uuid: req.user.id,
-      });
+      // Use direct database operations for better control
+      logger.info("🔄 Step 1: Set ALL accounts to non-primary for this user");
+      const { error: unsetAllError } = await supabaseAdmin
+        .from("tiktok_profiles")
+        .update({ is_primary: false, updated_at: new Date().toISOString() })
+        .eq("user_id", req.user.id);
 
-      if (rpcError) {
-        logger.error("❌ Error calling set_primary_tiktok_account RPC:", rpcError);
-        throw rpcError;
+      if (unsetAllError) {
+        logger.error("❌ Error unsetting all accounts as non-primary:", unsetAllError);
+        throw unsetAllError;
       }
 
-      if (!rpcResult) {
-        logger.error("❌ RPC function returned false - account doesn't belong to user");
-        return res.status(404).json({
-          status: "error",
-          message: "TikTok account not found or doesn't belong to you",
-        });
+      logger.info("🔄 Step 2: Set selected account as primary");
+      const { error: setPrimaryError } = await supabaseAdmin
+        .from("tiktok_profiles")
+        .update({ is_primary: true, updated_at: new Date().toISOString() })
+        .eq("id", accountId)
+        .eq("user_id", req.user.id);
+
+      if (setPrimaryError) {
+        logger.error("❌ Error setting account as primary:", setPrimaryError);
+        throw setPrimaryError;
       }
 
       // Step 3: Verify the operation was successful (with retry for timing issues)
@@ -1903,7 +1907,7 @@ const validateTikTokAccountSession = catchAsync(
       return next(new CustomError("User authentication required", 401));
     }
 
-    const { accountId } = req.params;
+    const { id: accountId } = req.params;
 
     if (!accountId) {
       return next(new CustomError("Account ID is required", 400));
@@ -2026,7 +2030,7 @@ const establishTikTokSession = catchAsync(
       return next(new CustomError("User authentication required", 401));
     }
 
-    const { accountId } = req.params;
+    const { id: accountId } = req.params;
 
     if (!accountId) {
       return next(new CustomError("Account ID is required", 400));
