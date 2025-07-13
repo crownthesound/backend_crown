@@ -35,6 +35,12 @@ const clearTikTokSession = catchAsync(
     let tikTokOAuthUrl = "";
     
     try {
+      // Check if we have valid TikTok configuration
+      if (!config.tiktok.clientKey || config.tiktok.clientKey === "") {
+        logger.warn("TikTok Clear Session - No client key configured, using fallback");
+        throw new Error("TikTok client key not configured");
+      }
+
       // Generate PKCE code challenge and verifier
       const { codeChallenge, codeVerifier } = generatePKCE();
 
@@ -61,10 +67,13 @@ const clearTikTokSession = catchAsync(
       tikTokOAuthUrl += "&code_challenge_method=S256";
       
       logger.info(`TikTok Clear Session - Generated OAuth URL: ${tikTokOAuthUrl}`);
+      logger.info(`TikTok Clear Session - Client Key: ${config.tiktok.clientKey ? 'Present' : 'Missing'}`);
+      logger.info(`TikTok Clear Session - Redirect URI: ${config.tiktok.redirectUri}`);
     } catch (error) {
       logger.error("Failed to generate TikTok OAuth URL:", error);
-      // Fallback to our auth endpoint
+      // Fallback to our auth endpoint which has its own mock/fallback logic
       tikTokOAuthUrl = `${backendUrl}/api/v1/tiktok/auth?token=${token}`;
+      logger.info(`TikTok Clear Session - Using fallback URL: ${tikTokOAuthUrl}`);
     }
 
     // Simple redirect for testing
@@ -182,7 +191,16 @@ const clearTikTokSession = catchAsync(
           setTimeout(function() {
             console.log("Redirecting to TikTok OAuth...");
             console.log("Target URL: ${tikTokOAuthUrl}");
+            
+            // Validate URL before redirect
+            if ("${tikTokOAuthUrl}".includes("undefined") || "${tikTokOAuthUrl}" === "") {
+              console.error("Invalid OAuth URL detected:", "${tikTokOAuthUrl}");
+              document.body.innerHTML = '<div style="text-align:center; padding:50px; color:white;"><h2>Error: Invalid OAuth Configuration</h2><p>URL: ${tikTokOAuthUrl}</p><p>Please check TikTok configuration.</p></div>';
+              return;
+            }
+            
             try {
+              console.log("Attempting redirect...");
               window.location.href = "${tikTokOAuthUrl}";
             } catch (e) {
               console.error("Redirect failed:", e);
@@ -197,14 +215,22 @@ const clearTikTokSession = catchAsync(
             console.log("Current URL:", window.location.href);
             if (window.location.href.includes('clear-session')) {
               console.log("Still on clear-session page, forcing redirect");
-              window.location.replace("${tikTokOAuthUrl}");
+              if (!"${tikTokOAuthUrl}".includes("undefined") && "${tikTokOAuthUrl}" !== "") {
+                window.location.replace("${tikTokOAuthUrl}");
+              } else {
+                document.body.innerHTML = '<div style="text-align:center; padding:50px; color:white;"><h2>Configuration Error</h2><p>TikTok OAuth URL is invalid</p><p>URL: ${tikTokOAuthUrl}</p></div>';
+              }
             }
           }, 3000);
           
           // Emergency fallback
           setTimeout(function() {
             console.log("Emergency fallback redirect");
-            window.location.replace("${tikTokOAuthUrl}");
+            if (!"${tikTokOAuthUrl}".includes("undefined") && "${tikTokOAuthUrl}" !== "") {
+              window.location.replace("${tikTokOAuthUrl}");
+            } else {
+              document.body.innerHTML = '<div style="text-align:center; padding:50px; color:white;"><h2>Final Error</h2><p>Unable to redirect to TikTok OAuth</p><p>Please check server logs</p></div>';
+            }
           }, 5000);
         </script>
       </body>
