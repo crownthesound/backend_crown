@@ -30,12 +30,47 @@ const clearTikTokSession = catchAsync(
     // Check if this is a simple redirect request
     const { token, simple } = req.query;
     const backendUrl = req.protocol + "://" + req.get("host");
-    const authUrl = `${backendUrl}/api/v1/tiktok/auth?token=${token}`;
+    
+    // Generate the actual TikTok OAuth URL instead of redirecting back to our auth endpoint
+    let tikTokOAuthUrl = "";
+    
+    try {
+      // Generate PKCE code challenge and verifier
+      const { codeChallenge, codeVerifier } = generatePKCE();
+
+      // Store code verifier in state along with user token if provided
+      const stateData = {
+        codeVerifier,
+        userToken: token || "",
+        timestamp: Date.now(),
+      };
+
+      // Encode state for URL
+      const encodedState = encodeURIComponent(
+        Buffer.from(JSON.stringify(stateData)).toString("base64")
+      );
+
+      // Build TikTok OAuth URL
+      tikTokOAuthUrl = "https://www.tiktok.com/v2/auth/authorize/";
+      tikTokOAuthUrl += `?client_key=${config.tiktok.clientKey}`;
+      tikTokOAuthUrl += `&scope=${encodeURIComponent("user.info.basic,video.list")}`;
+      tikTokOAuthUrl += "&response_type=code";
+      tikTokOAuthUrl += `&redirect_uri=${encodeURIComponent(config.tiktok.redirectUri)}`;
+      tikTokOAuthUrl += `&state=${encodedState}`;
+      tikTokOAuthUrl += `&code_challenge=${codeChallenge}`;
+      tikTokOAuthUrl += "&code_challenge_method=S256";
+      
+      logger.info(`TikTok Clear Session - Generated OAuth URL: ${tikTokOAuthUrl}`);
+    } catch (error) {
+      logger.error("Failed to generate TikTok OAuth URL:", error);
+      // Fallback to our auth endpoint
+      tikTokOAuthUrl = `${backendUrl}/api/v1/tiktok/auth?token=${token}`;
+    }
 
     // Simple redirect for testing
     if (simple === "true") {
       logger.info("TikTok Clear Session - Simple redirect requested");
-      return res.redirect(authUrl);
+      return res.redirect(tikTokOAuthUrl);
     }
 
     // Return HTML that clears TikTok session and redirects back to auth WITHOUT force_account_selection
@@ -146,13 +181,13 @@ const clearTikTokSession = catchAsync(
           // Immediate redirect after cleanup - don't wait too long
           setTimeout(function() {
             console.log("Redirecting to TikTok OAuth...");
-            console.log("Target URL: ${authUrl}");
+            console.log("Target URL: ${tikTokOAuthUrl}");
             try {
-              window.location.href = "${authUrl}";
+              window.location.href = "${tikTokOAuthUrl}";
             } catch (e) {
               console.error("Redirect failed:", e);
               // Force reload with new URL
-              window.location.replace("${authUrl}");
+              window.location.replace("${tikTokOAuthUrl}");
             }
           }, 1500);
           
@@ -162,14 +197,14 @@ const clearTikTokSession = catchAsync(
             console.log("Current URL:", window.location.href);
             if (window.location.href.includes('clear-session')) {
               console.log("Still on clear-session page, forcing redirect");
-              window.location.replace("${authUrl}");
+              window.location.replace("${tikTokOAuthUrl}");
             }
           }, 3000);
           
           // Emergency fallback
           setTimeout(function() {
             console.log("Emergency fallback redirect");
-            window.location.replace("${authUrl}");
+            window.location.replace("${tikTokOAuthUrl}");
           }, 5000);
         </script>
       </body>
