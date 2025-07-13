@@ -23,6 +23,57 @@ function generatePKCE() {
   return { codeVerifier, codeChallenge };
 }
 
+// Helper function to get primary TikTok account for a user
+async function getPrimaryTikTokAccount(userId: string) {
+  try {
+    // First try to get explicitly marked primary account
+    const { data: primaryAccount, error: primaryError } = await supabase
+      .from("tiktok_profiles")
+      .select("*")
+      .eq("user_id", userId)
+      .eq("is_primary", true)
+      .maybeSingle();
+    
+    if (primaryError && primaryError.code !== "PGRST116") {
+      throw primaryError;
+    }
+    
+    if (primaryAccount) {
+      return primaryAccount;
+    }
+    
+    // If no primary account found, get first account and log warning
+    const { data: firstAccount, error: firstError } = await supabase
+      .from("tiktok_profiles")
+      .select("*")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    
+    if (firstError && firstError.code !== "PGRST116") {
+      throw firstError;
+    }
+    
+    if (firstAccount) {
+      logger.warn(`⚠️ No primary TikTok account found for user ${userId}, using first account: ${firstAccount.id}`);
+      
+      // Auto-fix: Set this account as primary
+      await supabase.rpc("set_primary_tiktok_account", {
+        account_uuid: firstAccount.id,
+        user_uuid: userId,
+      });
+      
+      return { ...firstAccount, is_primary: true };
+    }
+    
+    return null;
+  } catch (error) {
+    logger.error("❌ Error getting primary TikTok account:", error);
+    throw error;
+  }
+}
+
 const clearTikTokSession = catchAsync(
   async (req: Request, res: Response, next: NextFunction) => {
     logger.info("TikTok Clear Session - Request received");
@@ -1135,15 +1186,18 @@ const saveTikTokProfile = catchAsync(
     }
 
     try {
-      // Check if profile already exists
-      logger.info("🔍 Checking for existing TikTok profile...");
-      const existingProfile = await supabase
+      // Check if user has any TikTok profiles (for multi-account support)
+      logger.info("🔍 Checking for existing TikTok profiles...");
+      const { data: existingProfiles, error: existingError } = await supabase
         .from("tiktok_profiles")
         .select("*")
-        .eq("user_id", req.user.id)
-        .single();
+        .eq("user_id", req.user.id);
 
-      logger.info("🔍 Existing profile result:", existingProfile);
+      logger.info("🔍 Existing profiles result:", { data: existingProfiles, error: existingError });
+      
+      if (existingError) {
+        throw existingError;
+      }
 
       // Extract TikTok user ID from token if not provided in userInfo
       let tikTokUserId = userInfo.open_id;
@@ -1158,9 +1212,19 @@ const saveTikTokProfile = catchAsync(
         logger.info(`🔍 Extracted TikTok user ID from token: ${tikTokUserId}`);
       }
 
+      // Check if this specific TikTok account already exists for this user
+      const existingTikTokAccount = existingProfiles?.find(
+        profile => profile.tiktok_user_id === tikTokUserId
+      );
+
       // Use a placeholder username if not provided
       const username =
         userInfo.display_name || `tiktok_user_${tikTokUserId.substring(0, 8)}`;
+
+      // Determine if this should be primary (first account or no primary exists)
+      const shouldBePrimary = !existingProfiles || 
+        existingProfiles.length === 0 || 
+        !existingProfiles.some(profile => profile.is_primary);
 
       const profileData = {
         user_id: req.user.id,
@@ -1175,6 +1239,7 @@ const saveTikTokProfile = catchAsync(
         access_token: accessToken,
         refresh_token: refreshToken,
         is_verified: userInfo.is_verified || false,
+        is_primary: shouldBePrimary,
         token_expires_at: new Date(
           Date.now() + 23.5 * 60 * 60 * 1000 // ~23.5h safety margin
         ).toISOString(), // 24 hours from now
@@ -1184,24 +1249,22 @@ const saveTikTokProfile = catchAsync(
         "🔍 Profile data to save:",
         JSON.stringify(profileData, null, 2)
       );
-
-      if (existingProfile.error && existingProfile.error.code !== "PGRST116") {
-        throw existingProfile.error;
-      }
+      logger.info(`🔍 Setting account as primary: ${shouldBePrimary}`);
 
       let result;
-      if (existingProfile.data) {
-        // Update existing profile
-        logger.info("🔄 Updating existing TikTok profile...");
+      if (existingTikTokAccount) {
+        // Update existing TikTok account
+        logger.info(`🔄 Updating existing TikTok account: ${tikTokUserId}`);
         result = await supabase
           .from("tiktok_profiles")
           .update(profileData)
+          .eq("id", existingTikTokAccount.id)
           .eq("user_id", req.user.id)
           .select()
           .single();
       } else {
-        // Insert new profile
-        logger.info("➕ Inserting new TikTok profile...");
+        // Insert new TikTok account
+        logger.info(`➕ Inserting new TikTok account: ${tikTokUserId}`);
         result = await supabase
           .from("tiktok_profiles")
           .insert(profileData)
@@ -1241,16 +1304,8 @@ const getUserProfile = catchAsync(
     }
 
     try {
-      // Get profile from database
-      const { data: profile, error } = await supabase
-        .from("tiktok_profiles")
-        .select("*")
-        .eq("user_id", req.user.id)
-        .single();
-
-      if (error && error.code !== "PGRST116") {
-        throw error;
-      }
+      // Get primary TikTok profile from database
+      const profile = await getPrimaryTikTokAccount(req.user.id);
 
       if (!profile) {
         return next(new CustomError("TikTok profile not found", 404));
@@ -1291,23 +1346,15 @@ const getUserVideos = catchAsync(
     res.setHeader("Access-Control-Allow-Credentials", "true");
 
     try {
-      // Get TikTok profile from database
-      logger.info(`🔍 Getting TikTok profile for user: ${req.user.id}`);
-      const { data: tikTokProfile, error } = await supabase
-        .from("tiktok_profiles")
-        .select("*")
-        .eq("user_id", req.user.id)
-        .single();
+      // Get primary TikTok profile from database
+      logger.info(`🔍 Getting primary TikTok profile for user: ${req.user.id}`);
+      const tikTokProfile = await getPrimaryTikTokAccount(req.user.id);
 
-      logger.info(`🔍 TikTok profile result:`, { data: tikTokProfile, error });
-
-      if (error && error.code !== "PGRST116") {
-        throw error;
-      }
+      logger.info(`🔍 Primary TikTok profile result:`, { data: tikTokProfile });
 
       if (!tikTokProfile || !tikTokProfile.access_token) {
         logger.error(
-          `❌ TikTok profile not found or no access token for user: ${req.user.id}`
+          `❌ Primary TikTok profile not found or no access token for user: ${req.user.id}`
         );
         return next(new CustomError("TikTok profile not connected", 404));
       }
