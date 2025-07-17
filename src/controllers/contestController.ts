@@ -3,6 +3,7 @@ import { supabase } from "../config/supabase";
 import { CustomError, catchAsync } from "../middleware/errorHandler";
 import { logger } from "../utils/logger";
 import { AuthenticatedRequest } from "../middleware/authMiddleware";
+import { tiktokVideoDownloader } from "../services/tiktokVideoDownloader";
 
 const getAllContests = catchAsync(
   async (req: Request, res: Response, next: NextFunction) => {
@@ -87,7 +88,7 @@ const getLeaderboard = catchAsync(
     const { data: submissions, error } = await supabase
       .from("contest_links")
       .select(
-        "id, username, views, likes, comments, shares, thumbnail, url, title, created_at, embed_code, tiktok_video_id"
+        "id, username, views, likes, comments, shares, thumbnail, url, video_url, title, created_at, embed_code, tiktok_video_id"
       )
       .eq("contest_id", id)
       .eq("is_contest_submission", true)
@@ -211,24 +212,72 @@ const joinContest = catchAsync(
 const submitVideo = catchAsync(
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     const { id } = req.params;
-    const { videoUrl, description } = req.body;
+    const { videoUrl, description, tiktokVideoId } = req.body;
 
     if (!videoUrl) {
       return next(new CustomError("Video URL is required", 400));
     }
 
-    // Implementation would depend on your video submission logic
-    // This is a placeholder
-    res.status(201).json({
-      status: "success",
-      message: "Video submitted successfully",
-      data: {
-        contest_id: id,
-        user_id: req.user!.id,
-        video_url: videoUrl,
-        description,
-      },
-    });
+    // Validate TikTok URL format
+    if (!videoUrl.includes('tiktok.com')) {
+      return next(new CustomError("Invalid TikTok URL", 400));
+    }
+
+    logger.info(`Starting video submission for contest ${id}, user ${req.user!.id}`);
+
+    try {
+      // Download TikTok video and store in Supabase
+      const downloadResult = await tiktokVideoDownloader.downloadAndStoreVideo(
+        videoUrl,
+        req.user!.id,
+        id
+      );
+
+      if (!downloadResult.success) {
+        logger.error(`Video download failed: ${downloadResult.error}`);
+        return next(new CustomError(`Failed to download video: ${downloadResult.error}`, 500));
+      }
+
+      // Create contest submission record
+      const { data: submission, error } = await supabase
+        .from("contest_links")
+        .insert({
+          contest_id: id,
+          created_by: req.user!.id,
+          url: videoUrl, // Original TikTok URL
+          video_url: downloadResult.publicUrl, // Downloaded video URL
+          title: description || "TikTok Video",
+          username: req.user!.email || "Unknown User", // Required field
+          thumbnail: "", // Required field - can be empty for now
+          tiktok_video_id: tiktokVideoId,
+          is_contest_submission: true,
+          submission_date: new Date().toISOString(),
+          video_type: "tiktok",
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .select()
+        .single();
+
+      if (error) {
+        logger.error("Database insert error:", error);
+        return next(new CustomError("Error saving submission", 500));
+      }
+
+      logger.info(`Video submission successful for contest ${id}, user ${req.user!.id}`);
+
+      res.status(201).json({
+        status: "success",
+        message: "Video submitted successfully",
+        data: {
+          submission,
+          downloaded_video_url: downloadResult.publicUrl,
+        },
+      });
+    } catch (error: any) {
+      logger.error("Video submission error:", error);
+      return next(new CustomError("Error processing video submission", 500));
+    }
   }
 );
 
