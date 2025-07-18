@@ -68,7 +68,7 @@ export class VideoDownloadService {
         throw new Error('No video download URL found');
       }
       
-      const videoDownloadUrl = result.result.video.noWatermark;
+      const videoDownloadUrl = (result.result.video as any).noWatermark || (result.result.video as any).play;
       logger.info(`🔍 Got TikTok video download URL: ${videoDownloadUrl}`);
       
       // Download the video file from TikTok's servers
