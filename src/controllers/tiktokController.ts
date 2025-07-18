@@ -1946,6 +1946,93 @@ const validateTikTokAccountSession = catchAsync(
   }
 );
 
+const tryRefreshToken = async (account: any): Promise<{ success: boolean; newTokens?: any; error?: string }> => {
+  try {
+    logger.info("🔄 Attempting to refresh TikTok access token");
+    
+    if (!account.refresh_token) {
+      logger.error("❌ No refresh token available for account");
+      return { success: false, error: "No refresh token available" };
+    }
+
+    // Check if refresh token is expired
+    if (account.refresh_expires_at) {
+      const now = new Date();
+      const refreshExpiresAt = new Date(account.refresh_expires_at);
+      if (now >= refreshExpiresAt) {
+        logger.error("❌ Refresh token has expired");
+        return { success: false, error: "Refresh token has expired" };
+      }
+    }
+
+    // Attempt to refresh the token
+    const newTokens = await tiktokService.refreshAccessToken(account.refresh_token);
+
+    if (!newTokens.access_token) {
+      logger.error("❌ Failed to get new access token from refresh");
+      return { success: false, error: "Failed to get new access token" };
+    }
+
+    // Calculate expiration times
+    const now = new Date();
+    const accessExpiresAt = new Date(now.getTime() + newTokens.expires_in * 1000);
+    const refreshExpiresAt = new Date(now.getTime() + newTokens.refresh_expires_in * 1000);
+
+    // Update the account in the database
+    const { error: updateError } = await supabase
+      .from("tiktok_profiles")
+      .update({
+        access_token: newTokens.access_token,
+        refresh_token: newTokens.refresh_token,
+        token_expires_at: accessExpiresAt.toISOString(),
+        refresh_expires_at: refreshExpiresAt.toISOString(),
+        updated_at: now.toISOString(),
+      })
+      .eq("id", account.id);
+
+    if (updateError) {
+      logger.error("❌ Failed to update tokens in database:", updateError);
+      return { success: false, error: "Failed to update tokens in database" };
+    }
+
+    logger.info("✅ Successfully refreshed TikTok access token");
+    return { 
+      success: true, 
+      newTokens: {
+        access_token: newTokens.access_token,
+        refresh_token: newTokens.refresh_token,
+        expires_at: accessExpiresAt.toISOString(),
+        refresh_expires_at: refreshExpiresAt.toISOString()
+      }
+    };
+
+  } catch (error: unknown) {
+    logger.error("❌ Error refreshing TikTok token:", {
+      accountId: account.id,
+      error: error,
+      hasRefreshToken: !!account.refresh_token,
+      refreshTokenExpiry: account.refresh_expires_at,
+    });
+    
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    
+    // Provide more specific error messages based on the type of error
+    if (errorMessage.includes("400") || errorMessage.includes("invalid_grant")) {
+      return { success: false, error: "Invalid refresh token - token may have been revoked" };
+    }
+    
+    if (errorMessage.includes("401") || errorMessage.includes("unauthorized")) {
+      return { success: false, error: "Unauthorized refresh token - account may need reconnection" };
+    }
+    
+    if (errorMessage.includes("ENOTFOUND") || errorMessage.includes("network")) {
+      return { success: false, error: "Network error during token refresh" };
+    }
+    
+    return { success: false, error: `Token refresh failed: ${errorMessage}` };
+  }
+};
+
 const establishTikTokSession = catchAsync(
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     logger.info("🔍 establishTikTokSession - Request received");
@@ -1980,6 +2067,12 @@ const establishTikTokSession = catchAsync(
 
       // Validate required token data
       if (!account.access_token || !account.token_expires_at) {
+        logger.error("❌ TikTok account missing authentication data:", {
+          accountId: account.id,
+          hasAccessToken: !!account.access_token,
+          hasTokenExpiry: !!account.token_expires_at,
+          hasRefreshToken: !!account.refresh_token,
+        });
         return res.status(400).json({
           status: "error",
           message: "TikTok account missing authentication data. Please reconnect the account.",
@@ -1991,21 +2084,57 @@ const establishTikTokSession = catchAsync(
       const expiresAt = new Date(account.token_expires_at);
       const isExpired = now >= expiresAt;
 
+      let currentAccount = account;
+      
       if (isExpired) {
-        return res.status(400).json({
-          status: "error",
-          message: "TikTok access token has expired. Please reconnect the account.",
-          details: {
-            expiresAt: account.token_expires_at,
-            currentTime: now.toISOString(),
-          },
-        });
+        logger.info("🔄 TikTok access token expired, attempting to refresh");
+        
+        // Attempt to refresh the token
+        const refreshResult = await tryRefreshToken(account);
+        
+        if (!refreshResult.success) {
+          logger.error("❌ Failed to refresh token:", {
+            accountId: account.id,
+            refreshError: refreshResult.error,
+            hasRefreshToken: !!account.refresh_token,
+            refreshTokenExpiry: account.refresh_expires_at,
+          });
+          
+          // Determine specific error message based on refresh error
+          let errorMessage = "TikTok access token has expired and could not be refreshed. Please reconnect the account.";
+          if (refreshResult.error?.includes("No refresh token available")) {
+            errorMessage = "TikTok access token has expired and no refresh token is available. Please reconnect the account.";
+          } else if (refreshResult.error?.includes("Refresh token has expired")) {
+            errorMessage = "Both access and refresh tokens have expired. Please reconnect the account.";
+          }
+          
+          return res.status(400).json({
+            status: "error",
+            message: errorMessage,
+            details: {
+              expiresAt: account.token_expires_at,
+              currentTime: now.toISOString(),
+              refreshError: refreshResult.error,
+            },
+          });
+        }
+        
+        // Update current account with new tokens
+        currentAccount = {
+          ...account,
+          access_token: refreshResult.newTokens.access_token,
+          refresh_token: refreshResult.newTokens.refresh_token,
+          token_expires_at: refreshResult.newTokens.expires_at,
+          refresh_expires_at: refreshResult.newTokens.refresh_expires_at,
+        };
+        
+        logger.info("✅ Successfully refreshed TikTok access token");
       }
 
       // Test the TikTok session by making an API call
       try {
         logger.info("🔍 Establishing TikTok session - testing API connectivity");
-        const userInfo = await tiktokService.getUserInfo(account.access_token);
+        const userInfo = await tiktokService.getUserInfo(currentAccount.access_token);
         
         if (!userInfo || !userInfo.data || !userInfo.data.user) {
           throw new Error("Invalid response from TikTok API");
@@ -2018,39 +2147,74 @@ const establishTikTokSession = catchAsync(
           status: "success",
           message: "TikTok session established successfully",
           data: {
-            accountId: account.id,
+            accountId: currentAccount.id,
             tiktokUserId: tikTokUser.open_id,
-            username: tikTokUser.display_name || account.username,
-            avatarUrl: tikTokUser.avatar_url || account.avatar_url,
-            isVerified: tikTokUser.is_verified || account.is_verified,
+            username: tikTokUser.display_name || currentAccount.username,
+            avatarUrl: tikTokUser.avatar_url || currentAccount.avatar_url,
+            isVerified: tikTokUser.is_verified || currentAccount.is_verified,
             sessionEstablished: true,
             connectedAt: new Date().toISOString(),
+            tokenRefreshed: isExpired, // Indicate if token was refreshed
           },
         });
 
       } catch (sessionError: unknown) {
-        logger.error("❌ Failed to establish TikTok session:", sessionError);
+        logger.error("❌ Failed to establish TikTok session:", {
+          accountId: currentAccount.id,
+          error: sessionError,
+          tokenRefreshed: isExpired,
+        });
         
         const errorMessage = sessionError instanceof Error ? sessionError.message : String(sessionError);
         
+        // Check for specific error types
         if (errorMessage.includes("401") || errorMessage.includes("unauthorized") || errorMessage.includes("invalid_token")) {
+          logger.error("❌ TikTok API authentication failed even after token refresh");
           return res.status(400).json({
             status: "error",
-            message: "TikTok account authentication failed. Please reconnect the account.",
+            message: "TikTok account authentication failed. The account may have been revoked or needs to be reconnected.",
             details: {
               reason: "unauthorized",
-              accountId: account.id,
+              accountId: currentAccount.id,
+              tokenWasRefreshed: isExpired,
             },
           });
         }
 
+        if (errorMessage.includes("403") || errorMessage.includes("forbidden")) {
+          logger.error("❌ TikTok API access forbidden - possible scope issue");
+          return res.status(400).json({
+            status: "error",
+            message: "TikTok API access forbidden. The account may lack required permissions.",
+            details: {
+              reason: "forbidden",
+              accountId: currentAccount.id,
+              tokenWasRefreshed: isExpired,
+            },
+          });
+        }
+
+        if (errorMessage.includes("ENOTFOUND") || errorMessage.includes("network")) {
+          logger.error("❌ Network error connecting to TikTok API");
+          return res.status(500).json({
+            status: "error",
+            message: "Network error connecting to TikTok API. Please try again later.",
+            details: {
+              reason: "network_error",
+              accountId: currentAccount.id,
+            },
+          });
+        }
+
+        // Generic error response
         return res.status(500).json({
           status: "error",
           message: "Failed to establish TikTok session. Please try again or reconnect the account.",
           details: {
             reason: "session_establishment_failed",
             error: errorMessage,
-            accountId: account.id,
+            accountId: currentAccount.id,
+            tokenWasRefreshed: isExpired,
           },
         });
       }

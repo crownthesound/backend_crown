@@ -238,6 +238,59 @@ const getBasicUserInfo = async (
   }
 };
 
+const getUserInfoWithRetry = async (accessToken: string, refreshToken?: string, accountId?: string): Promise<TikTokUserInfo> => {
+  try {
+    // First attempt with current token
+    return await getUserInfo(accessToken);
+  } catch (error: any) {
+    // If token is invalid/expired and we have refresh token, try to refresh and retry
+    if (refreshToken && accountId && (error.message.includes("401") || error.message.includes("unauthorized") || error.message.includes("invalid_token"))) {
+      logger.info("🔄 getUserInfo failed with auth error, attempting token refresh");
+      
+      try {
+        // Import supabase here to avoid circular dependency
+        const { createClient } = await import("@supabase/supabase-js");
+        const supabase = createClient(
+          process.env.SUPABASE_URL!,
+          process.env.SUPABASE_SERVICE_ROLE_KEY!
+        );
+        
+        // Refresh the token
+        const newTokens = await refreshAccessToken(refreshToken);
+        
+        // Update the database with new tokens
+        const now = new Date();
+        const accessExpiresAt = new Date(now.getTime() + newTokens.expires_in * 1000);
+        const refreshExpiresAt = new Date(now.getTime() + newTokens.refresh_expires_in * 1000);
+        
+        await supabase
+          .from("tiktok_profiles")
+          .update({
+            access_token: newTokens.access_token,
+            refresh_token: newTokens.refresh_token,
+            token_expires_at: accessExpiresAt.toISOString(),
+            refresh_expires_at: refreshExpiresAt.toISOString(),
+            updated_at: now.toISOString(),
+          })
+          .eq("id", accountId);
+        
+        logger.info("✅ Token refreshed successfully in getUserInfo, retrying API call");
+        
+        // Retry with new token
+        return await getUserInfo(newTokens.access_token);
+        
+      } catch (refreshError) {
+        logger.error("❌ Failed to refresh token in getUserInfo:", refreshError);
+        // Fall back to original error
+        throw error;
+      }
+    }
+    
+    // If no refresh token available or other error, throw original error
+    throw error;
+  }
+};
+
 const getUserInfo = async (accessToken: string): Promise<TikTokUserInfo> => {
   try {
     const url = `${TIKTOK_API_BASE}/v2/user/info/`;
@@ -341,6 +394,65 @@ const hasScopeGranted = (
 ): boolean => {
   // TODO: store & check scopes correctly (requires DB migration)
   return true;
+};
+
+const getUserVideosWithRetry = async (
+  accessToken: string,
+  cursor?: string,
+  maxCount: number = 20,
+  refreshToken?: string,
+  accountId?: string
+): Promise<TikTokVideoData> => {
+  try {
+    // First attempt with current token
+    return await getUserVideos(accessToken, cursor, maxCount);
+  } catch (error: any) {
+    // If token is invalid/expired and we have refresh token, try to refresh and retry
+    if (refreshToken && accountId && (error.message.includes("401") || error.message.includes("unauthorized") || error.message.includes("invalid_token"))) {
+      logger.info("🔄 getUserVideos failed with auth error, attempting token refresh");
+      
+      try {
+        // Import supabase here to avoid circular dependency
+        const { createClient } = await import("@supabase/supabase-js");
+        const supabase = createClient(
+          process.env.SUPABASE_URL!,
+          process.env.SUPABASE_SERVICE_ROLE_KEY!
+        );
+        
+        // Refresh the token
+        const newTokens = await refreshAccessToken(refreshToken);
+        
+        // Update the database with new tokens
+        const now = new Date();
+        const accessExpiresAt = new Date(now.getTime() + newTokens.expires_in * 1000);
+        const refreshExpiresAt = new Date(now.getTime() + newTokens.refresh_expires_in * 1000);
+        
+        await supabase
+          .from("tiktok_profiles")
+          .update({
+            access_token: newTokens.access_token,
+            refresh_token: newTokens.refresh_token,
+            token_expires_at: accessExpiresAt.toISOString(),
+            refresh_expires_at: refreshExpiresAt.toISOString(),
+            updated_at: now.toISOString(),
+          })
+          .eq("id", accountId);
+        
+        logger.info("✅ Token refreshed successfully in getUserVideos, retrying API call");
+        
+        // Retry with new token
+        return await getUserVideos(newTokens.access_token, cursor, maxCount);
+        
+      } catch (refreshError) {
+        logger.error("❌ Failed to refresh token in getUserVideos:", refreshError);
+        // Fall back to original error
+        throw error;
+      }
+    }
+    
+    // If no refresh token available or other error, throw original error
+    throw error;
+  }
 };
 
 const getUserVideos = async (
@@ -673,7 +785,9 @@ export const tiktokService = {
   refreshAccessToken,
   getBasicUserInfo,
   getUserInfo,
+  getUserInfoWithRetry,
   getUserVideos,
+  getUserVideosWithRetry,
   getVideoDetails,
   uploadVideo,
   searchVideosByHashtag,
