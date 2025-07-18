@@ -32,6 +32,7 @@ router.options("/accounts/:id/validate", corsHandler);
 router.options("/accounts/:id/establish-session", corsHandler);
 router.options("/videos", corsHandler);
 router.options("/videos/upload", corsHandler);
+router.options("/videos/download", corsHandler);
 
 // Simple test route
 router.get("/test", (req: Request, res: Response) => {
@@ -70,6 +71,7 @@ router.post("/accounts/:id/establish-session", authMiddleware, tiktokController.
 router.delete("/accounts/:id", authMiddleware, tiktokController.deleteTikTokAccount);
 router.post("/videos", authMiddleware, tiktokController.getUserVideos); // Changed to POST to match client expectations
 router.post("/videos/upload", authMiddleware, tiktokController.uploadVideo); // Renamed to avoid conflict
+router.post("/videos/download", authMiddleware, tiktokController.downloadVideo); // New download endpoint
 router.get(
   "/videos/:videoId",
   authMiddleware,

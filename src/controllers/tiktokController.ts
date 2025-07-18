@@ -5,6 +5,7 @@ import { CustomError, catchAsync } from "../middleware/errorHandler";
 import { logger } from "../utils/logger";
 import { AuthenticatedRequest } from "../middleware/authMiddleware";
 import { tiktokService } from "../services/tiktokService";
+import { VideoDownloadService } from "../services/videoDownloadService";
 import { supabase, supabaseAdmin } from "../config/supabase";
 import crypto from "crypto";
 import jwt from "jsonwebtoken";
@@ -2401,6 +2402,81 @@ async function saveTikTokProfileToDatabase(userToken: string, tokenData: any, us
   }
 }
 
+const downloadVideo = catchAsync(
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    logger.info("🔍 downloadVideo - Request received");
+    logger.info("🔍 downloadVideo - User:", req.user?.id);
+
+    if (!req.user) {
+      return next(new CustomError("User authentication required", 401));
+    }
+
+    const { videoUrl, videoId } = req.body;
+
+    if (!videoUrl || !videoId) {
+      return next(new CustomError("Video URL and video ID are required", 400));
+    }
+
+    try {
+      logger.info(`🔍 Starting video download for user ${req.user.id}, video: ${videoId}`);
+
+      // Download and store the video
+      const result = await VideoDownloadService.downloadAndStoreVideo({
+        videoUrl,
+        videoId,
+        userId: req.user.id,
+      });
+
+      logger.info(`✅ Video download completed successfully: ${result.publicUrl}`);
+
+      return res.status(200).json({
+        status: "success",
+        message: "Video downloaded and stored successfully",
+        data: {
+          publicUrl: result.publicUrl,
+          fileName: result.fileName,
+        },
+      });
+    } catch (error: unknown) {
+      logger.error("❌ Video download error:", error);
+      
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      
+      // Check for specific error types
+      if (errorMessage.includes("Video file too large")) {
+        return res.status(413).json({
+          status: "error",
+          message: "Video file is too large. Please use a smaller video.",
+          error_code: "FILE_TOO_LARGE",
+        });
+      }
+      
+      if (errorMessage.includes("timeout")) {
+        return res.status(408).json({
+          status: "error",
+          message: "Video download timed out. Please try again.",
+          error_code: "DOWNLOAD_TIMEOUT",
+        });
+      }
+      
+      if (errorMessage.includes("No video formats found") || errorMessage.includes("No suitable video format found")) {
+        return res.status(400).json({
+          status: "error",
+          message: "This video cannot be downloaded. Please try a different video.",
+          error_code: "VIDEO_NOT_DOWNLOADABLE",
+        });
+      }
+      
+      return res.status(500).json({
+        status: "error",
+        message: "Failed to download video. Please try again.",
+        error_code: "DOWNLOAD_FAILED",
+        details: process.env.NODE_ENV === "development" ? errorMessage : undefined,
+      });
+    }
+  }
+);
+
 export const tiktokController = {
   clearTikTokSession,
   initiateAuth,
@@ -2419,4 +2495,5 @@ export const tiktokController = {
   validateTikTokAccountSession,
   establishTikTokSession,
   deleteTikTokAccount,
+  downloadVideo,
 };

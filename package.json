@@ -26,6 +26,7 @@
   "author": "Crown Team",
   "license": "MIT",
   "dependencies": {
+    "@distube/ytdl-core": "^4.16.12",
     "@supabase/supabase-js": "^2.38.4",
     "@types/jsonwebtoken": "^9.0.10",
     "axios": "^1.6.2",
