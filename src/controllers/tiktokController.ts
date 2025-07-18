@@ -2059,17 +2059,20 @@ const tryRefreshToken = async (account: any): Promise<{ success: boolean; newTok
 const establishTikTokSession = catchAsync(
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     const startTime = Date.now();
-    logger.info("🔍 establishTikTokSession - Request received");
-    logger.info("🔍 establishTikTokSession - User:", req.user?.id);
-    logger.info("🔍 establishTikTokSession - Request details:", {
+    const debugLogs: string[] = [];
+    
+    const addDebugLog = (message: string, data?: any) => {
+      const logEntry = data ? `${message} ${JSON.stringify(data)}` : message;
+      debugLogs.push(logEntry);
+      logger.info(logEntry);
+    };
+    
+    addDebugLog("🔍 establishTikTokSession - Request received");
+    addDebugLog("🔍 establishTikTokSession - User:", req.user?.id);
+    addDebugLog("🔍 establishTikTokSession - Request details:", {
       method: req.method,
       url: req.url,
-      headers: {
-        'user-agent': req.get('user-agent'),
-        'authorization': req.get('authorization') ? 'Bearer [REDACTED]' : 'None',
-      },
       params: req.params,
-      body: req.body,
     });
 
     if (!req.user) {
@@ -2083,11 +2086,9 @@ const establishTikTokSession = catchAsync(
     }
 
     try {
-      logger.info("🔍 [establishTikTokSession] Starting with parameters:", {
+      addDebugLog("🔍 Starting with parameters:", {
         requestedAccountId: accountId,
         userId: req.user.id,
-        method: req.method,
-        url: req.url,
       });
       
       // Get the specific account
@@ -2098,7 +2099,7 @@ const establishTikTokSession = catchAsync(
         .eq("user_id", req.user.id)
         .single();
 
-      logger.info("🔍 [establishTikTokSession] Database query completed:", {
+      addDebugLog("🔍 Database query completed:", {
         accountFound: !!account,
         error: fetchError,
         requestedAccountId: accountId,
@@ -2106,7 +2107,7 @@ const establishTikTokSession = catchAsync(
       });
 
       if (fetchError || !account) {
-        logger.error("❌ [establishTikTokSession] Account not found or doesn't belong to user:", {
+        addDebugLog("❌ Account not found or doesn't belong to user:", {
           fetchError,
           requestedAccountId: accountId,
           userId: req.user.id,
@@ -2114,12 +2115,13 @@ const establishTikTokSession = catchAsync(
         return res.status(404).json({
           status: "error",
           message: "TikTok account not found or doesn't belong to you",
+          debugLogs,
         });
       }
 
       // CRITICAL: Verify we got the right account
       if (account.id !== accountId) {
-        logger.error("❌ [establishTikTokSession] CRITICAL BUG: Database returned wrong account!", {
+        addDebugLog("❌ CRITICAL BUG: Database returned wrong account!", {
           requestedAccountId: accountId,
           returnedAccountId: account.id,
           returnedUsername: account.username,
@@ -2128,10 +2130,11 @@ const establishTikTokSession = catchAsync(
         return res.status(500).json({
           status: "error",
           message: "Internal error: Wrong account returned from database",
+          debugLogs,
         });
       }
 
-      logger.info("🔍 [establishTikTokSession] Account retrieved successfully:", {
+      addDebugLog("🔍 Account retrieved successfully:", {
         requestedAccountId: accountId,
         returnedAccountId: account.id,
         accountMatch: account.id === accountId,
@@ -2141,6 +2144,8 @@ const establishTikTokSession = catchAsync(
         hasRefreshToken: !!account.refresh_token,
         tokenExpiresAt: account.token_expires_at,
         isPrimary: account.is_primary,
+        accessTokenStart: account.access_token ? account.access_token.substring(0, 20) : null,
+        accessTokenEnd: account.access_token ? account.access_token.substring(account.access_token.length - 20) : null,
       });
 
       // Validate required token data
@@ -2251,7 +2256,7 @@ const establishTikTokSession = catchAsync(
         const tikTokUser = userInfo.data.user;
         
         // CRITICAL: Check if TikTok API returned user data that matches the account
-        logger.info("🔍 [establishTikTokSession] TikTok API user data:", {
+        addDebugLog("🔍 TikTok API user data:", {
           requestedAccountId: accountId,
           storedUsername: account.username,
           storedDisplayName: account.display_name,
@@ -2259,6 +2264,20 @@ const establishTikTokSession = catchAsync(
           apiReturnedDisplayName: tikTokUser.display_name,
           apiDataMatchesStored: tikTokUser.display_name === account.display_name,
         });
+        
+        // CRITICAL: Token validation - check if the token belongs to the correct TikTok user
+        const isTokenValid = tikTokUser.display_name === account.display_name || 
+                           tikTokUser.display_name === account.username;
+        
+        if (!isTokenValid) {
+          addDebugLog("❌ TOKEN CROSS-CONTAMINATION DETECTED!", {
+            expectedUser: account.display_name || account.username,
+            actualUser: tikTokUser.display_name,
+            accountId: account.id,
+            tiktokUserId: tikTokUser.open_id,
+            tokenStart: account.access_token ? account.access_token.substring(0, 20) : null,
+          });
+        }
 
         const totalDuration = Date.now() - startTime;
         logger.info("✅ TikTok session established successfully:", {
@@ -2284,7 +2303,7 @@ const establishTikTokSession = catchAsync(
           scopeUsed: "basic", // Indicate we used basic user info
         };
 
-        logger.info("🔍 [establishTikTokSession] Final response data:", {
+        addDebugLog("🔍 Final response data:", {
           requestedAccountId: accountId,
           responseAccountId: responseData.accountId,
           accountMatch: responseData.accountId === accountId,
@@ -2297,6 +2316,7 @@ const establishTikTokSession = catchAsync(
           status: "success",
           message: "TikTok session established successfully",
           data: responseData,
+          debugLogs, // Include debug logs in response for production debugging
         });
 
       } catch (sessionError: unknown) {
