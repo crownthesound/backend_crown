@@ -60,7 +60,7 @@ export class VideoDownloadService {
       logger.info(`🔍 Downloading video stream from: ${videoUrl}`);
       
       // Get video info and download URL using TikTok API
-      const result = await TiktokDL(videoUrl, {
+      const result = await TiktokDL.Downloader(videoUrl, {
         version: 'v1'
       });
       
