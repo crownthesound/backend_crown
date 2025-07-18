@@ -1,4 +1,4 @@
-import * as ytdl from '@distube/ytdl-core';
+import ytdl from '@distube/ytdl-core';
 import { supabaseAdmin } from '../config/supabase';
 import { logger } from '../utils/logger';
 import { v4 as uuidv4 } from 'uuid';
