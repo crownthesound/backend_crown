@@ -3185,6 +3185,17 @@ const downloadVideo = catchAsync(
       logger.error("❌ Video download error:", error);
       
       const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      const errorStack = error instanceof Error ? error.stack : "No stack trace";
+      
+      // Log detailed error information
+      logger.error("❌ Video download error details:", {
+        message: errorMessage,
+        stack: errorStack,
+        type: error instanceof Error ? error.constructor.name : typeof error,
+        videoUrl: req.body.videoUrl,
+        videoId: req.body.videoId,
+        userId: req.user.id,
+      });
       
       // Check for specific error types
       if (errorMessage.includes("Video file too large")) {
@@ -3192,6 +3203,7 @@ const downloadVideo = catchAsync(
           status: "error",
           message: "Video file is too large. Please use a smaller video.",
           error_code: "FILE_TOO_LARGE",
+          details: errorMessage,
         });
       }
       
@@ -3200,6 +3212,7 @@ const downloadVideo = catchAsync(
           status: "error",
           message: "Video download timed out. Please try again.",
           error_code: "DOWNLOAD_TIMEOUT",
+          details: errorMessage,
         });
       }
       
@@ -3208,14 +3221,17 @@ const downloadVideo = catchAsync(
           status: "error",
           message: "This video cannot be downloaded. Please try a different video.",
           error_code: "VIDEO_NOT_DOWNLOADABLE",
+          details: errorMessage,
         });
       }
       
+      // Return the actual error message instead of generic one
       return res.status(500).json({
         status: "error",
-        message: "Failed to download video. Please try again.",
+        message: `Video download failed: ${errorMessage}`,
         error_code: "DOWNLOAD_FAILED",
-        details: process.env.NODE_ENV === "development" ? errorMessage : undefined,
+        details: errorMessage,
+        stack: process.env.NODE_ENV === "development" ? errorStack : undefined,
       });
     }
   }

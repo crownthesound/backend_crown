@@ -27,17 +27,26 @@ export class VideoDownloadService {
   static async downloadAndStoreVideo(options: VideoDownloadOptions): Promise<VideoDownloadResult> {
     const { videoUrl, videoId, userId } = options;
     
-    logger.info(`🔍 Starting video download for URL: ${videoUrl}`);
+    logger.info(`🔍 Starting video download for URL: ${videoUrl}`, {
+      videoId,
+      userId,
+      bucketName: this.BUCKET_NAME
+    });
     
     try {
       // Generate unique filename
       const fileName = `${userId}_${videoId}_${uuidv4()}.mp4`;
+      logger.info(`🔍 Generated filename: ${fileName}`);
       
       // Download video stream
+      logger.info(`🔍 Step 1: Downloading video stream...`);
       const videoStream = await this.downloadVideoStream(videoUrl);
+      logger.info(`✅ Step 1 completed: Got video stream`);
       
       // Upload to Supabase storage
+      logger.info(`🔍 Step 2: Uploading to Supabase...`);
       const publicUrl = await this.uploadToSupabase(videoStream, fileName);
+      logger.info(`✅ Step 2 completed: Uploaded to Supabase`);
       
       logger.info(`✅ Video download completed successfully: ${publicUrl}`);
       
@@ -50,7 +59,10 @@ export class VideoDownloadService {
       logger.error(`❌ Error details:`, {
         name: error instanceof Error ? error.name : 'Unknown',
         message: error instanceof Error ? error.message : String(error),
-        stack: error instanceof Error ? error.stack : 'No stack trace'
+        stack: error instanceof Error ? error.stack : 'No stack trace',
+        videoUrl,
+        videoId,
+        userId
       });
       throw error;
     }
