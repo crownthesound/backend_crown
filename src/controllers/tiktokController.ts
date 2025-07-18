@@ -3164,23 +3164,39 @@ const downloadVideo = catchAsync(
     try {
       logger.info(`🔍 Starting video download for user ${req.user.id}, video: ${videoId}`);
 
-      // Download and store the video
-      const result = await VideoDownloadService.downloadAndStoreVideo({
-        videoUrl,
-        videoId,
-        userId: req.user.id,
-      });
+      // Try to download and store the video, but make it optional
+      try {
+        const result = await VideoDownloadService.downloadAndStoreVideo({
+          videoUrl,
+          videoId,
+          userId: req.user.id,
+        });
 
-      logger.info(`✅ Video download completed successfully: ${result.publicUrl}`);
+        logger.info(`✅ Video download completed successfully: ${result.publicUrl}`);
 
-      return res.status(200).json({
-        status: "success",
-        message: "Video downloaded and stored successfully",
-        data: {
-          publicUrl: result.publicUrl,
-          fileName: result.fileName,
-        },
-      });
+        return res.status(200).json({
+          status: "success",
+          message: "Video downloaded and stored successfully",
+          data: {
+            publicUrl: result.publicUrl,
+            fileName: result.fileName,
+          },
+        });
+      } catch (downloadError) {
+        logger.warn(`⚠️ Video download failed, but continuing: ${downloadError instanceof Error ? downloadError.message : 'Unknown error'}`);
+        
+        // Return success with null video URL - the frontend will handle this
+        return res.status(200).json({
+          status: "success",
+          message: "Video download failed but submission will continue",
+          data: {
+            publicUrl: null,
+            fileName: null,
+            downloadFailed: true,
+            reason: downloadError instanceof Error ? downloadError.message : 'Unknown error',
+          },
+        });
+      }
     } catch (error: unknown) {
       logger.error("❌ Video download error:", error);
       
