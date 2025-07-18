@@ -2174,8 +2174,11 @@ const establishTikTokSession = catchAsync(
           tokenEnd: currentAccount.access_token.substring(currentAccount.access_token.length - 20),
         });
         
+        // Use getBasicUserInfo instead of getUserInfo to avoid scope issues
+        // This only requires basic user permissions and gets open_id, display_name
+        // For video information, use getUserVideos API separately when needed
         const apiCallStartTime = Date.now();
-        const userInfo = await tiktokService.getUserInfo(currentAccount.access_token);
+        const userInfo = await tiktokService.getBasicUserInfo(currentAccount.access_token);
         const apiCallDuration = Date.now() - apiCallStartTime;
         
         logger.info("🔍 TikTok API call completed:", {
@@ -2209,11 +2212,13 @@ const establishTikTokSession = catchAsync(
             accountId: currentAccount.id,
             tiktokUserId: tikTokUser.open_id,
             username: tikTokUser.display_name || currentAccount.username,
-            avatarUrl: tikTokUser.avatar_url || currentAccount.avatar_url,
-            isVerified: tikTokUser.is_verified || currentAccount.is_verified,
+            // For fields not available in basic info, use stored account data
+            avatarUrl: currentAccount.avatar_url,
+            isVerified: currentAccount.is_verified,
             sessionEstablished: true,
             connectedAt: new Date().toISOString(),
             tokenRefreshed: isExpired, // Indicate if token was refreshed
+            scopeUsed: "basic", // Indicate we used basic user info
           },
         });
 
