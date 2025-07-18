@@ -1,4 +1,3 @@
-import TiktokDL from '@tobyg74/tiktok-api-dl';
 import { supabaseAdmin } from '../config/supabase';
 import { logger } from '../utils/logger';
 import { v4 as uuidv4 } from 'uuid';
@@ -58,46 +57,53 @@ export class VideoDownloadService {
   }
 
   /**
-   * Downloads video stream from TikTok URL
+   * Downloads video stream from TikTok URL using web scraping approach
    */
   private static async downloadVideoStream(videoUrl: string): Promise<Readable> {
     try {
       logger.info(`🔍 Downloading video stream from: ${videoUrl}`);
       
-      // Get video info and download URL using TikTok API
-      const result = await TiktokDL.Downloader(videoUrl, {
-        version: 'v1'
+      // First, get the TikTok page to extract video download URL
+      const pageResponse = await axios.get(videoUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.5',
+          'Accept-Encoding': 'gzip, deflate',
+          'Connection': 'keep-alive',
+          'Upgrade-Insecure-Requests': '1',
+        }
       });
       
-      logger.info(`🔍 TikTok API full response:`, JSON.stringify(result, null, 2));
+      const html = pageResponse.data;
+      logger.info(`🔍 Got TikTok page HTML, length: ${html.length}`);
       
-      if (!result || !result.result) {
-        throw new Error('No result from TikTok API');
-      }
-      
-      // Try different property paths for video URL
+      // Extract video download URL from the page
       let videoDownloadUrl = null;
-      const video = result.result.video;
       
-      if (video) {
-        logger.info(`🔍 Video object:`, JSON.stringify(video, null, 2));
+      // Try to find the video URL in the page source
+      const videoUrlPattern = /"downloadAddr":"([^"]+)"/;
+      const match = html.match(videoUrlPattern);
+      
+      if (match && match[1]) {
+        videoDownloadUrl = match[1].replace(/\\u002F/g, '/');
+        logger.info(`🔍 Found video download URL: ${videoDownloadUrl}`);
+      } else {
+        // Try alternative patterns
+        const altPattern = /"playAddr":"([^"]+)"/;
+        const altMatch = html.match(altPattern);
         
-        // Try different property names
-        videoDownloadUrl = 
-          (video as any).noWatermark || 
-          (video as any).play || 
-          (video as any).playAddr || 
-          (video as any).downloadAddr || 
-          (video as any).url;
+        if (altMatch && altMatch[1]) {
+          videoDownloadUrl = altMatch[1].replace(/\\u002F/g, '/');
+          logger.info(`🔍 Found alternative video URL: ${videoDownloadUrl}`);
+        }
       }
       
       if (!videoDownloadUrl) {
-        throw new Error('No video download URL found in API response');
+        throw new Error('Could not extract video download URL from TikTok page');
       }
       
-      logger.info(`🔍 Got TikTok video download URL: ${videoDownloadUrl}`);
-      
-      // Download the video file from TikTok's servers
+      // Download the video file
       const response = await axios({
         method: 'GET',
         url: videoDownloadUrl,
