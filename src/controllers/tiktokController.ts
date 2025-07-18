@@ -2083,7 +2083,12 @@ const establishTikTokSession = catchAsync(
     }
 
     try {
-      logger.info("🔍 Starting database query for account:", accountId);
+      logger.info("🔍 [establishTikTokSession] Starting with parameters:", {
+        requestedAccountId: accountId,
+        userId: req.user.id,
+        method: req.method,
+        url: req.url,
+      });
       
       // Get the specific account
       const { data: account, error: fetchError } = await supabase
@@ -2093,17 +2098,17 @@ const establishTikTokSession = catchAsync(
         .eq("user_id", req.user.id)
         .single();
 
-      logger.info("🔍 Database query completed:", {
+      logger.info("🔍 [establishTikTokSession] Database query completed:", {
         accountFound: !!account,
         error: fetchError,
-        accountId: accountId,
+        requestedAccountId: accountId,
         userId: req.user.id,
       });
 
       if (fetchError || !account) {
-        logger.error("❌ Account not found or doesn't belong to user:", {
+        logger.error("❌ [establishTikTokSession] Account not found or doesn't belong to user:", {
           fetchError,
-          accountId,
+          requestedAccountId: accountId,
           userId: req.user.id,
         });
         return res.status(404).json({
@@ -2112,13 +2117,30 @@ const establishTikTokSession = catchAsync(
         });
       }
 
-      logger.info("🔍 Account retrieved successfully:", {
-        accountId: account.id,
+      // CRITICAL: Verify we got the right account
+      if (account.id !== accountId) {
+        logger.error("❌ [establishTikTokSession] CRITICAL BUG: Database returned wrong account!", {
+          requestedAccountId: accountId,
+          returnedAccountId: account.id,
+          returnedUsername: account.username,
+          returnedDisplayName: account.display_name,
+        });
+        return res.status(500).json({
+          status: "error",
+          message: "Internal error: Wrong account returned from database",
+        });
+      }
+
+      logger.info("🔍 [establishTikTokSession] Account retrieved successfully:", {
+        requestedAccountId: accountId,
+        returnedAccountId: account.id,
+        accountMatch: account.id === accountId,
         username: account.username,
         displayName: account.display_name,
         hasAccessToken: !!account.access_token,
         hasRefreshToken: !!account.refresh_token,
         tokenExpiresAt: account.token_expires_at,
+        isPrimary: account.is_primary,
       });
 
       // Validate required token data
@@ -2215,7 +2237,7 @@ const establishTikTokSession = catchAsync(
         const userInfo = await tiktokService.getBasicUserInfo(currentAccount.access_token);
         const apiCallDuration = Date.now() - apiCallStartTime;
         
-        logger.info("🔍 TikTok API call completed:", {
+        logger.info("🔍 [establishTikTokSession] TikTok API call completed:", {
           duration: apiCallDuration,
           success: !!userInfo,
           hasData: !!(userInfo && userInfo.data),
@@ -2227,6 +2249,16 @@ const establishTikTokSession = catchAsync(
         }
 
         const tikTokUser = userInfo.data.user;
+        
+        // CRITICAL: Check if TikTok API returned user data that matches the account
+        logger.info("🔍 [establishTikTokSession] TikTok API user data:", {
+          requestedAccountId: accountId,
+          storedUsername: account.username,
+          storedDisplayName: account.display_name,
+          apiReturnedOpenId: tikTokUser.open_id,
+          apiReturnedDisplayName: tikTokUser.display_name,
+          apiDataMatchesStored: tikTokUser.display_name === account.display_name,
+        });
 
         const totalDuration = Date.now() - startTime;
         logger.info("✅ TikTok session established successfully:", {
@@ -2239,21 +2271,32 @@ const establishTikTokSession = catchAsync(
           },
         });
         
+        const responseData = {
+          accountId: currentAccount.id,
+          tiktokUserId: tikTokUser.open_id,
+          username: tikTokUser.display_name || currentAccount.username,
+          // For fields not available in basic info, use stored account data
+          avatarUrl: currentAccount.avatar_url,
+          isVerified: currentAccount.is_verified,
+          sessionEstablished: true,
+          connectedAt: new Date().toISOString(),
+          tokenRefreshed: isExpired, // Indicate if token was refreshed
+          scopeUsed: "basic", // Indicate we used basic user info
+        };
+
+        logger.info("🔍 [establishTikTokSession] Final response data:", {
+          requestedAccountId: accountId,
+          responseAccountId: responseData.accountId,
+          accountMatch: responseData.accountId === accountId,
+          responseUsername: responseData.username,
+          responseTikTokUserId: responseData.tiktokUserId,
+          tokenRefreshed: responseData.tokenRefreshed,
+        });
+
         return res.status(200).json({
           status: "success",
           message: "TikTok session established successfully",
-          data: {
-            accountId: currentAccount.id,
-            tiktokUserId: tikTokUser.open_id,
-            username: tikTokUser.display_name || currentAccount.username,
-            // For fields not available in basic info, use stored account data
-            avatarUrl: currentAccount.avatar_url,
-            isVerified: currentAccount.is_verified,
-            sessionEstablished: true,
-            connectedAt: new Date().toISOString(),
-            tokenRefreshed: isExpired, // Indicate if token was refreshed
-            scopeUsed: "basic", // Indicate we used basic user info
-          },
+          data: responseData,
         });
 
       } catch (sessionError: unknown) {
