@@ -2233,9 +2233,11 @@ const establishTikTokSession = catchAsync(
         accessTokenEnd: account.access_token ? account.access_token.substring(account.access_token.length - 20) : null,
       });
 
-      // Validate required token data
-      if (!account.access_token || !account.token_expires_at) {
-        logger.error("❌ TikTok account missing authentication data:", {
+      let currentAccount = account;
+
+      // Validate required token data - but allow accounts with refresh tokens to proceed
+      if (!account.access_token && !account.refresh_token) {
+        addDebugLog("❌ TikTok account missing all authentication data:", {
           accountId: account.id,
           hasAccessToken: !!account.access_token,
           hasTokenExpiry: !!account.token_expires_at,
@@ -2244,23 +2246,96 @@ const establishTikTokSession = catchAsync(
         return res.status(400).json({
           status: "error",
           message: "TikTok account missing authentication data. Please reconnect the account.",
+          debugLogs,
         });
       }
 
-      // Check if token is expired
-      const now = new Date();
-      const expiresAt = new Date(account.token_expires_at);
-      const isExpired = now >= expiresAt;
+      // Special case: Account has refresh token but no access token (from previous cleanup)
+      if (!account.access_token && account.refresh_token) {
+        addDebugLog("🔄 Account missing access token but has refresh token, attempting smart refresh:", {
+          accountId: account.id,
+          hasAccessToken: !!account.access_token,
+          hasRefreshToken: !!account.refresh_token,
+          cleanupRecovery: true,
+        });
 
-      logger.info("🔍 Token expiration check:", {
+        try {
+          // Attempt to refresh the token
+          const refreshResult = await tryRefreshToken(account);
+          
+          if (refreshResult.success && refreshResult.newTokens) {
+            addDebugLog("✅ Smart refresh successful for cleaned up account!", {
+              accountId: account.id,
+              newTokenStart: refreshResult.newTokens.access_token.substring(0, 20),
+              cleanupRecovery: true,
+            });
+            
+            // Update current account with refreshed tokens
+            currentAccount = {
+              ...account,
+              access_token: refreshResult.newTokens.access_token,
+              refresh_token: refreshResult.newTokens.refresh_token,
+              token_expires_at: refreshResult.newTokens.expires_at,
+            };
+            
+            addDebugLog("✅ Account recovered from cleanup state via smart refresh", {
+              accountId: account.id,
+              recoveredToken: true,
+            });
+            
+            // Continue with normal flow using the refreshed token
+            
+          } else {
+            addDebugLog("❌ Smart refresh failed for cleaned up account:", {
+              accountId: account.id,
+              refreshError: refreshResult.error,
+              cleanupRecovery: false,
+            });
+            
+            return res.status(400).json({
+              status: "error",
+              message: "TikTok account tokens were cleaned up and refresh failed. Please reconnect the account.",
+              error_code: "REFRESH_FAILED_AFTER_CLEANUP",
+              details: {
+                reason: "refresh_failed_after_cleanup",
+                accountId: account.id,
+                refreshError: refreshResult.error,
+                requiresReconnection: true,
+              },
+              debugLogs,
+            });
+          }
+        } catch (refreshErr) {
+          addDebugLog("❌ Error during smart refresh for cleaned up account:", refreshErr);
+          
+          return res.status(500).json({
+            status: "error",
+            message: "Failed to recover account after cleanup. Please reconnect the account.",
+            error_code: "RECOVERY_ERROR",
+            details: {
+              reason: "recovery_error",
+              accountId: account.id,
+              error: refreshErr instanceof Error ? refreshErr.message : String(refreshErr),
+              requiresReconnection: true,
+            },
+            debugLogs,
+          });
+        }
+      }
+
+      // Check if token is expired (using currentAccount which might have been updated)
+      const now = new Date();
+      const expiresAt = currentAccount.token_expires_at ? new Date(currentAccount.token_expires_at) : null;
+      const isExpired = expiresAt ? now >= expiresAt : false;
+
+      addDebugLog("🔍 Token expiration check:", {
         now: now.toISOString(),
-        expiresAt: expiresAt.toISOString(),
+        expiresAt: expiresAt ? expiresAt.toISOString() : null,
         isExpired: isExpired,
-        timeDiff: now.getTime() - expiresAt.getTime(),
+        timeDiff: expiresAt ? now.getTime() - expiresAt.getTime() : null,
+        accountRecovered: currentAccount !== account,
       });
 
-      let currentAccount = account;
-      
       if (isExpired) {
         logger.info("🔄 TikTok access token expired, attempting to refresh");
         
