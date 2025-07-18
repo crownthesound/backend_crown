@@ -77,12 +77,9 @@ export class VideoDownloadService {
       
       logger.info(`🔍 Selected video format: ${format.itag}, quality: ${format.qualityLabel || 'unknown'}`);
       
-      // Create download stream with timeout
+      // Create download stream
       const videoStream = ytdl(videoUrl, {
         format: format,
-        requestOptions: {
-          timeout: this.TIMEOUT,
-        },
       });
       
       return videoStream;
