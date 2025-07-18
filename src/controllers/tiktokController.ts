@@ -1980,6 +1980,64 @@ const validateTikTokAccountSession = catchAsync(
   }
 );
 
+// Helper function to clean up contaminated tokens for a specific account
+const cleanupContaminatedTokens = async (accountId: string, userId: string): Promise<{ success: boolean; error?: string }> => {
+  try {
+    logger.info("🔧 Cleaning up contaminated tokens for account:", { accountId, userId });
+    
+    // Clear the access token and refresh token to force re-authentication
+    const { error: cleanupError } = await supabase
+      .from("tiktok_profiles")
+      .update({
+        access_token: null,
+        refresh_token: null,
+        token_expires_at: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", accountId)
+      .eq("user_id", userId);
+    
+    if (cleanupError) {
+      logger.error("❌ Failed to cleanup contaminated tokens:", cleanupError);
+      return { success: false, error: cleanupError.message };
+    }
+    
+    logger.info("✅ Successfully cleaned up contaminated tokens for account:", accountId);
+    return { success: true };
+  } catch (error) {
+    logger.error("❌ Error during token cleanup:", error);
+    return { success: false, error: error instanceof Error ? error.message : String(error) };
+  }
+};
+
+// Helper function to validate token ownership
+const validateTokenOwnership = async (accessToken: string, expectedUser: string): Promise<{ isValid: boolean; actualUser?: string; error?: string }> => {
+  try {
+    logger.info("🔍 Validating token ownership", { expectedUser, tokenStart: accessToken.substring(0, 20) });
+    
+    const userInfo = await tiktokService.getBasicUserInfo(accessToken);
+    
+    if (!userInfo || !userInfo.data || !userInfo.data.user) {
+      return { isValid: false, error: "Invalid response from TikTok API" };
+    }
+    
+    const actualUser = userInfo.data.user.display_name;
+    const isValid = actualUser === expectedUser;
+    
+    logger.info("🔍 Token ownership validation result:", {
+      expectedUser,
+      actualUser,
+      isValid,
+      tokenStart: accessToken.substring(0, 20),
+    });
+    
+    return { isValid, actualUser };
+  } catch (error) {
+    logger.error("❌ Error validating token ownership:", error);
+    return { isValid: false, error: error instanceof Error ? error.message : String(error) };
+  }
+};
+
 const tryRefreshToken = async (account: any): Promise<{ success: boolean; newTokens?: any; error?: string }> => {
   try {
     logger.info("🔄 Attempting to refresh TikTok access token");
@@ -1998,6 +2056,33 @@ const tryRefreshToken = async (account: any): Promise<{ success: boolean; newTok
     if (!newTokens.access_token) {
       logger.error("❌ Failed to get new access token from refresh");
       return { success: false, error: "Failed to get new access token" };
+    }
+
+    // PREVENTION SAFEGUARD: Validate the new token belongs to the correct user
+    const expectedUser = account.display_name || account.username;
+    if (expectedUser) {
+      const validation = await validateTokenOwnership(newTokens.access_token, expectedUser);
+      
+      if (!validation.isValid) {
+        logger.error("❌ Token refresh resulted in wrong user token!", {
+          accountId: account.id,
+          expectedUser,
+          actualUser: validation.actualUser,
+          tokenStart: newTokens.access_token.substring(0, 20),
+        });
+        
+        // Don't save the wrong token - return error instead
+        return { 
+          success: false, 
+          error: `Token refresh returned wrong user token. Expected: ${expectedUser}, Got: ${validation.actualUser}` 
+        };
+      }
+      
+      logger.info("✅ Token refresh validation passed - token belongs to correct user:", {
+        accountId: account.id,
+        expectedUser,
+        actualUser: validation.actualUser,
+      });
     }
 
     // Calculate expiration times
@@ -2277,6 +2362,52 @@ const establishTikTokSession = catchAsync(
             tiktokUserId: tikTokUser.open_id,
             tokenStart: account.access_token ? account.access_token.substring(0, 20) : null,
           });
+          
+          // AUTOMATIC CLEANUP: Clear the contaminated token from this account
+          try {
+            addDebugLog("🔧 Cleaning up contaminated token from account:", {
+              accountId: account.id,
+              storedUsername: account.username,
+              storedDisplayName: account.display_name,
+              wrongTokenUser: tikTokUser.display_name,
+            });
+            
+            // Clear the access token and refresh token to force re-authentication
+            const { error: cleanupError } = await supabase
+              .from("tiktok_profiles")
+              .update({
+                access_token: null,
+                refresh_token: null,
+                token_expires_at: null,
+                updated_at: new Date().toISOString(),
+              })
+              .eq("id", account.id)
+              .eq("user_id", req.user.id);
+            
+            if (cleanupError) {
+              addDebugLog("❌ Failed to cleanup contaminated token:", cleanupError);
+            } else {
+              addDebugLog("✅ Successfully cleaned up contaminated token");
+            }
+            
+          } catch (cleanupErr) {
+            addDebugLog("❌ Error during token cleanup:", cleanupErr);
+          }
+          
+          // Return error response requiring re-authentication
+          return res.status(400).json({
+            status: "error",
+            message: "Token cross-contamination detected. The account has been reset and requires re-authentication.",
+            error_code: "TOKEN_CONTAMINATION",
+            details: {
+              reason: "token_contamination",
+              accountId: account.id,
+              storedUser: account.display_name || account.username,
+              tokenBelongsTo: tikTokUser.display_name,
+              requiresReconnection: true,
+            },
+            debugLogs, // Include debug logs for production debugging
+          });
         }
 
         const totalDuration = Date.now() - startTime;
@@ -2389,6 +2520,105 @@ const establishTikTokSession = catchAsync(
         message: "Failed to establish TikTok session. Please try again.",
         details: errorMessage,
       });
+    }
+  }
+);
+
+const scanAndCleanupContaminatedTokens = catchAsync(
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    logger.info("🔍 scanAndCleanupContaminatedTokens - Request received");
+    logger.info("🔍 scanAndCleanupContaminatedTokens - User:", req.user?.id);
+
+    if (!req.user) {
+      return next(new CustomError("User authentication required", 401));
+    }
+
+    try {
+      // Get all TikTok accounts for the user
+      const { data: accounts, error: fetchError } = await supabase
+        .from("tiktok_profiles")
+        .select("*")
+        .eq("user_id", req.user.id);
+
+      if (fetchError) {
+        throw fetchError;
+      }
+
+      if (!accounts || accounts.length === 0) {
+        return res.status(200).json({
+          status: "success",
+          message: "No TikTok accounts found for user",
+          data: {
+            accountsScanned: 0,
+            contaminatedAccounts: [],
+            cleanedAccounts: [],
+          },
+        });
+      }
+
+      logger.info(`🔍 Scanning ${accounts.length} TikTok accounts for token contamination`);
+
+      const contaminatedAccounts = [];
+      const cleanedAccounts = [];
+
+      // Check each account for token contamination
+      for (const account of accounts) {
+        if (!account.access_token) {
+          logger.info(`⏭️ Skipping account ${account.id} - no access token`);
+          continue;
+        }
+
+        try {
+          const expectedUser = account.display_name || account.username;
+          const validation = await validateTokenOwnership(account.access_token, expectedUser);
+
+          if (!validation.isValid && validation.actualUser) {
+            logger.warn(`❌ Token contamination detected for account ${account.id}:`, {
+              accountId: account.id,
+              storedUser: expectedUser,
+              tokenBelongsTo: validation.actualUser,
+            });
+
+            contaminatedAccounts.push({
+              accountId: account.id,
+              storedUser: expectedUser,
+              tokenBelongsTo: validation.actualUser,
+            });
+
+            // Clean up the contaminated token
+            const cleanupResult = await cleanupContaminatedTokens(account.id, req.user.id);
+            if (cleanupResult.success) {
+              cleanedAccounts.push({
+                accountId: account.id,
+                storedUser: expectedUser,
+                tokenBelongsTo: validation.actualUser,
+              });
+            }
+          } else if (validation.isValid) {
+            logger.info(`✅ Token valid for account ${account.id}:`, {
+              accountId: account.id,
+              expectedUser,
+              actualUser: validation.actualUser,
+            });
+          }
+        } catch (validationError) {
+          logger.error(`❌ Error validating token for account ${account.id}:`, validationError);
+          // Skip this account if validation fails
+        }
+      }
+
+      return res.status(200).json({
+        status: "success",
+        message: `Token contamination scan completed. Found ${contaminatedAccounts.length} contaminated accounts.`,
+        data: {
+          accountsScanned: accounts.length,
+          contaminatedAccounts,
+          cleanedAccounts,
+        },
+      });
+    } catch (error: unknown) {
+      logger.error("❌ Scan and cleanup contaminated tokens error:", error);
+      return next(new CustomError("Failed to scan and cleanup contaminated tokens", 500));
     }
   }
 );
@@ -2821,4 +3051,5 @@ export const tiktokController = {
   establishTikTokSession,
   deleteTikTokAccount,
   downloadVideo,
+  scanAndCleanupContaminatedTokens,
 };

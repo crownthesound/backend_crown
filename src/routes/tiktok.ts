@@ -30,6 +30,7 @@ router.options("/accounts/set-primary", corsHandler);
 router.options("/accounts/:id", corsHandler);
 router.options("/accounts/:id/validate", corsHandler);
 router.options("/accounts/:id/establish-session", corsHandler);
+router.options("/accounts/cleanup-contaminated", corsHandler);
 router.options("/videos", corsHandler);
 router.options("/videos/upload", corsHandler);
 router.options("/videos/download", corsHandler);
@@ -69,6 +70,7 @@ router.post("/accounts/set-primary", authMiddleware, tiktokController.setPrimary
 router.get("/accounts/:id/validate", authMiddleware, tiktokController.validateTikTokAccountSession);
 router.post("/accounts/:id/establish-session", authMiddleware, tiktokController.establishTikTokSession);
 router.delete("/accounts/:id", authMiddleware, tiktokController.deleteTikTokAccount);
+router.post("/accounts/cleanup-contaminated", authMiddleware, tiktokController.scanAndCleanupContaminatedTokens);
 router.post("/videos", authMiddleware, tiktokController.getUserVideos); // Changed to POST to match client expectations
 router.post("/videos/upload", authMiddleware, tiktokController.uploadVideo); // Renamed to avoid conflict
 router.post("/videos/download", authMiddleware, tiktokController.downloadVideo); // New download endpoint
