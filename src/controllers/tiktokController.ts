@@ -1955,18 +1955,11 @@ const tryRefreshToken = async (account: any): Promise<{ success: boolean; newTok
       return { success: false, error: "No refresh token available" };
     }
 
-    // Check if refresh token is expired
-    if (account.refresh_expires_at) {
-      const now = new Date();
-      const refreshExpiresAt = new Date(account.refresh_expires_at);
-      if (now >= refreshExpiresAt) {
-        logger.error("❌ Refresh token has expired");
-        return { success: false, error: "Refresh token has expired" };
-      }
-    }
+    // Note: We don't check refresh token expiration since it's not stored in the database
+    // TikTok refresh tokens are typically valid for 365 days
 
     // Attempt to refresh the token
-    const newTokens = await tiktokService.refreshAccessToken(account.refresh_token);
+    const newTokens = await tiktokService.refreshAccessToken(account.refresh_token!);
 
     if (!newTokens.access_token) {
       logger.error("❌ Failed to get new access token from refresh");
@@ -1976,7 +1969,6 @@ const tryRefreshToken = async (account: any): Promise<{ success: boolean; newTok
     // Calculate expiration times
     const now = new Date();
     const accessExpiresAt = new Date(now.getTime() + newTokens.expires_in * 1000);
-    const refreshExpiresAt = new Date(now.getTime() + newTokens.refresh_expires_in * 1000);
 
     // Update the account in the database
     const { error: updateError } = await supabase
@@ -1985,7 +1977,6 @@ const tryRefreshToken = async (account: any): Promise<{ success: boolean; newTok
         access_token: newTokens.access_token,
         refresh_token: newTokens.refresh_token,
         token_expires_at: accessExpiresAt.toISOString(),
-        refresh_expires_at: refreshExpiresAt.toISOString(),
         updated_at: now.toISOString(),
       })
       .eq("id", account.id);
@@ -2001,8 +1992,7 @@ const tryRefreshToken = async (account: any): Promise<{ success: boolean; newTok
       newTokens: {
         access_token: newTokens.access_token,
         refresh_token: newTokens.refresh_token,
-        expires_at: accessExpiresAt.toISOString(),
-        refresh_expires_at: refreshExpiresAt.toISOString()
+        expires_at: accessExpiresAt.toISOString()
       }
     };
 
@@ -2011,7 +2001,6 @@ const tryRefreshToken = async (account: any): Promise<{ success: boolean; newTok
       accountId: account.id,
       error: error,
       hasRefreshToken: !!account.refresh_token,
-      refreshTokenExpiry: account.refresh_expires_at,
     });
     
     const errorMessage = error instanceof Error ? error.message : String(error);
@@ -2097,7 +2086,6 @@ const establishTikTokSession = catchAsync(
             accountId: account.id,
             refreshError: refreshResult.error,
             hasRefreshToken: !!account.refresh_token,
-            refreshTokenExpiry: account.refresh_expires_at,
           });
           
           // Determine specific error message based on refresh error
@@ -2125,7 +2113,6 @@ const establishTikTokSession = catchAsync(
           access_token: refreshResult.newTokens.access_token,
           refresh_token: refreshResult.newTokens.refresh_token,
           token_expires_at: refreshResult.newTokens.expires_at,
-          refresh_expires_at: refreshResult.newTokens.refresh_expires_at,
         };
         
         logger.info("✅ Successfully refreshed TikTok access token");
@@ -2134,6 +2121,12 @@ const establishTikTokSession = catchAsync(
       // Test the TikTok session by making an API call
       try {
         logger.info("🔍 Establishing TikTok session - testing API connectivity");
+        
+        // Ensure we have a valid access token
+        if (!currentAccount.access_token) {
+          throw new Error("No access token available after refresh");
+        }
+        
         const userInfo = await tiktokService.getUserInfo(currentAccount.access_token);
         
         if (!userInfo || !userInfo.data || !userInfo.data.user) {

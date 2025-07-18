@@ -261,7 +261,6 @@ const getUserInfoWithRetry = async (accessToken: string, refreshToken?: string, 
         // Update the database with new tokens
         const now = new Date();
         const accessExpiresAt = new Date(now.getTime() + newTokens.expires_in * 1000);
-        const refreshExpiresAt = new Date(now.getTime() + newTokens.refresh_expires_in * 1000);
         
         await supabase
           .from("tiktok_profiles")
@@ -269,7 +268,6 @@ const getUserInfoWithRetry = async (accessToken: string, refreshToken?: string, 
             access_token: newTokens.access_token,
             refresh_token: newTokens.refresh_token,
             token_expires_at: accessExpiresAt.toISOString(),
-            refresh_expires_at: refreshExpiresAt.toISOString(),
             updated_at: now.toISOString(),
           })
           .eq("id", accountId);
@@ -425,7 +423,6 @@ const getUserVideosWithRetry = async (
         // Update the database with new tokens
         const now = new Date();
         const accessExpiresAt = new Date(now.getTime() + newTokens.expires_in * 1000);
-        const refreshExpiresAt = new Date(now.getTime() + newTokens.refresh_expires_in * 1000);
         
         await supabase
           .from("tiktok_profiles")
@@ -433,7 +430,6 @@ const getUserVideosWithRetry = async (
             access_token: newTokens.access_token,
             refresh_token: newTokens.refresh_token,
             token_expires_at: accessExpiresAt.toISOString(),
-            refresh_expires_at: refreshExpiresAt.toISOString(),
             updated_at: now.toISOString(),
           })
           .eq("id", accountId);
