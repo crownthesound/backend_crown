@@ -1,8 +1,9 @@
-import ytdl from '@distube/ytdl-core';
+import { TiktokDL } from '@tobyg74/tiktok-api-dl';
 import { supabaseAdmin } from '../config/supabase';
 import { logger } from '../utils/logger';
 import { v4 as uuidv4 } from 'uuid';
 import { Readable } from 'stream';
+import axios from 'axios';
 
 interface VideoDownloadResult {
   publicUrl: string;
@@ -58,31 +59,37 @@ export class VideoDownloadService {
     try {
       logger.info(`🔍 Downloading video stream from: ${videoUrl}`);
       
-      // Get video info first to validate
-      const info = await ytdl.getInfo(videoUrl);
-      
-      if (!info || !info.formats || info.formats.length === 0) {
-        throw new Error('No video formats found');
-      }
-      
-      // Get the best quality MP4 format
-      const format = ytdl.chooseFormat(info.formats, {
-        quality: 'highest',
-        filter: 'videoandaudio',
+      // Get video info and download URL using TikTok API
+      const result = await TiktokDL(videoUrl, {
+        version: 'v1'
       });
       
-      if (!format) {
-        throw new Error('No suitable video format found');
+      if (!result || !result.result || !result.result.video) {
+        throw new Error('No video download URL found');
       }
       
-      logger.info(`🔍 Selected video format: ${format.itag}, quality: ${format.qualityLabel || 'unknown'}`);
+      const videoDownloadUrl = result.result.video;
+      logger.info(`🔍 Got TikTok video download URL: ${videoDownloadUrl}`);
       
-      // Create download stream
-      const videoStream = ytdl(videoUrl, {
-        format: format,
+      // Download the video file from TikTok's servers
+      const response = await axios({
+        method: 'GET',
+        url: videoDownloadUrl,
+        responseType: 'stream',
+        timeout: this.TIMEOUT,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+          'Referer': 'https://www.tiktok.com/',
+        }
       });
       
-      return videoStream;
+      if (!response.data) {
+        throw new Error('Failed to get video stream');
+      }
+      
+      logger.info(`🔍 Successfully got video stream, content-length: ${response.headers['content-length'] || 'unknown'}`);
+      
+      return response.data;
     } catch (error) {
       logger.error(`❌ Failed to download video stream:`, error);
       throw new Error(`Failed to download video: ${error instanceof Error ? error.message : 'Unknown error'}`);
