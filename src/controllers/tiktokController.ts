@@ -504,6 +504,9 @@ const initiateAuth = catchAsync(
     authUrl += `&state=${encodedState}`;
     authUrl += `&code_challenge=${codeChallenge}`;
     authUrl += "&code_challenge_method=S256";
+    
+    // Add force_login parameter to force account selection
+    authUrl += "&force_login=1";
 
     logger.info(`🔍 TikTok Auth - Scopes being requested: ${scopeOrder}`);
     logger.info(
