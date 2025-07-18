@@ -1351,7 +1351,16 @@ const getUserVideos = catchAsync(
       logger.info(`🔍 Getting primary TikTok profile for user: ${req.user.id}`);
       const tikTokProfile = await getPrimaryTikTokAccount(req.user.id);
 
-      logger.info(`🔍 Primary TikTok profile result:`, { data: tikTokProfile });
+      logger.info(`🔍 Primary TikTok profile result:`, { 
+        accountId: tikTokProfile?.id,
+        username: tikTokProfile?.username,
+        displayName: tikTokProfile?.display_name,
+        hasAccessToken: !!tikTokProfile?.access_token,
+        hasRefreshToken: !!tikTokProfile?.refresh_token,
+        tokenExpiresAt: tikTokProfile?.token_expires_at,
+        isPrimary: tikTokProfile?.is_primary,
+        createdAt: tikTokProfile?.created_at,
+      });
 
       if (!tikTokProfile || !tikTokProfile.access_token) {
         logger.error(
@@ -1370,10 +1379,20 @@ const getUserVideos = catchAsync(
           ? new Date(tikTokProfile.token_expires_at).getTime()
           : 0;
 
-        if (
-          Date.now() + TOKEN_BUFFER_MS > expiresAt &&
-          tikTokProfile.refresh_token
-        ) {
+        const now = Date.now();
+        const isExpired = now + TOKEN_BUFFER_MS > expiresAt;
+
+        logger.info("🔍 Token expiration check for videos:", {
+          accountId: tikTokProfile.id,
+          username: tikTokProfile.username,
+          now: new Date(now).toISOString(),
+          expiresAt: tikTokProfile.token_expires_at,
+          isExpired,
+          hasRefreshToken: !!tikTokProfile.refresh_token,
+          timeDiff: now - expiresAt,
+        });
+
+        if (isExpired && tikTokProfile.refresh_token) {
           logger.info("🔄 TikTok access token expired/expiring, refreshing...");
           const refreshed = await tiktokService.refreshAccessToken(
             tikTokProfile.refresh_token
@@ -1381,8 +1400,8 @@ const getUserVideos = catchAsync(
 
           accessTokenToUse = refreshed.access_token;
 
-          // Update DB with new tokens
-          await supabase
+          // Update DB with new tokens - IMPORTANT: Update the specific account ID
+          const updateResult = await supabase
             .from("tiktok_profiles")
             .update({
               access_token: refreshed.access_token,
@@ -1392,32 +1411,47 @@ const getUserVideos = catchAsync(
                 Date.now() + refreshed.expires_in * 1000
               ).toISOString(),
             })
+            .eq("id", tikTokProfile.id) // Use account ID instead of user_id
             .eq("user_id", req.user.id);
 
-          logger.info("✅ TikTok token refreshed and database updated");
+          logger.info("✅ TikTok token refreshed and database updated:", {
+            accountId: tikTokProfile.id,
+            updateResult,
+          });
+        } else if (isExpired && !tikTokProfile.refresh_token) {
+          logger.error("❌ Token expired but no refresh token available:", {
+            accountId: tikTokProfile.id,
+            username: tikTokProfile.username,
+          });
         }
       } catch (refreshErr) {
-        logger.error("❌ Failed to refresh TikTok token:", refreshErr);
+        logger.error("❌ Failed to refresh TikTok token:", {
+          accountId: tikTokProfile.id,
+          username: tikTokProfile.username,
+          error: refreshErr,
+        });
       }
 
       logger.info(
-        `🔍 Using TikTok access token: ${accessTokenToUse.substring(0, 20)}...`
+        `🔍 Using TikTok access token for account: ${tikTokProfile.username} (${tikTokProfile.id}): ${accessTokenToUse.substring(0, 20)}...`
       );
 
       // No mock mode - use real TikTok API only
 
-      logger.info(`🔍 Calling TikTok API to get user videos...`);
+      logger.info(`🔍 Calling TikTok API to get user videos for account: ${tikTokProfile.username} (${tikTokProfile.id})`);
       try {
+        const videoCallStartTime = Date.now();
         const videos = await tiktokService.getUserVideos(
           accessTokenToUse,
           cursor as string,
           parseInt(maxCount as string)
         );
+        const videoCallDuration = Date.now() - videoCallStartTime;
 
         logger.info(
           `✅ Successfully retrieved ${
             videos.data?.videos?.length || 0
-          } videos from TikTok API`
+          } videos from TikTok API for account: ${tikTokProfile.username} (${tikTokProfile.id}) in ${videoCallDuration}ms`
         );
 
         res.status(200).json({
