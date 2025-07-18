@@ -48,6 +48,11 @@ export class VideoDownloadService {
       };
     } catch (error) {
       logger.error(`❌ Video download failed for URL: ${videoUrl}`, error);
+      logger.error(`❌ Error details:`, {
+        name: error instanceof Error ? error.name : 'Unknown',
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : 'No stack trace'
+      });
       throw error;
     }
   }
@@ -64,11 +69,32 @@ export class VideoDownloadService {
         version: 'v1'
       });
       
-      if (!result || !result.result || !result.result.video) {
-        throw new Error('No video download URL found');
+      logger.info(`🔍 TikTok API full response:`, JSON.stringify(result, null, 2));
+      
+      if (!result || !result.result) {
+        throw new Error('No result from TikTok API');
       }
       
-      const videoDownloadUrl = (result.result.video as any).noWatermark || (result.result.video as any).play;
+      // Try different property paths for video URL
+      let videoDownloadUrl = null;
+      const video = result.result.video;
+      
+      if (video) {
+        logger.info(`🔍 Video object:`, JSON.stringify(video, null, 2));
+        
+        // Try different property names
+        videoDownloadUrl = 
+          (video as any).noWatermark || 
+          (video as any).play || 
+          (video as any).playAddr || 
+          (video as any).downloadAddr || 
+          (video as any).url;
+      }
+      
+      if (!videoDownloadUrl) {
+        throw new Error('No video download URL found in API response');
+      }
+      
       logger.info(`🔍 Got TikTok video download URL: ${videoDownloadUrl}`);
       
       // Download the video file from TikTok's servers
@@ -92,6 +118,11 @@ export class VideoDownloadService {
       return response.data;
     } catch (error) {
       logger.error(`❌ Failed to download video stream:`, error);
+      logger.error(`❌ Stream download error details:`, {
+        name: error instanceof Error ? error.name : 'Unknown',
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : 'No stack trace'
+      });
       throw new Error(`Failed to download video: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
