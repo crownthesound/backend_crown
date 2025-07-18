@@ -1,4 +1,4 @@
-import { TiktokDL } from '@tobyg74/tiktok-api-dl';
+import TiktokDL from '@tobyg74/tiktok-api-dl';
 import { supabaseAdmin } from '../config/supabase';
 import { logger } from '../utils/logger';
 import { v4 as uuidv4 } from 'uuid';
