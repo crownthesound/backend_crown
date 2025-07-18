@@ -291,18 +291,21 @@ const getUserInfoWithRetry = async (accessToken: string, refreshToken?: string, 
 
 const getUserInfo = async (accessToken: string): Promise<TikTokUserInfo> => {
   try {
+    const requestStartTime = Date.now();
     const url = `${TIKTOK_API_BASE}/v2/user/info/`;
     const params = {
       fields:
         "open_id,union_id,avatar_url,avatar_url_100,avatar_url_200,display_name,bio_description,profile_deep_link,is_verified,follower_count,following_count,likes_count,video_count",
     };
 
-    logger.info(`🔍 TikTok getUserInfo - URL: ${url}`);
-    logger.info(
-      `🔍 TikTok getUserInfo - Access token: ${accessToken.substring(0, 20)}...`
-    );
-    logger.info(`🔍 TikTok getUserInfo - Full access token: ${accessToken}`);
-    logger.info(`🔍 TikTok getUserInfo - Fields: ${params.fields}`);
+    logger.info(`🔍 TikTok getUserInfo - Starting request:`, {
+      url,
+      tokenLength: accessToken.length,
+      tokenStart: accessToken.substring(0, 20),
+      tokenEnd: accessToken.substring(accessToken.length - 20),
+      fields: params.fields,
+      environment: config.tiktok.useSandbox ? 'sandbox' : 'production',
+    });
 
     // Let's also decode the access token to see what scopes are actually granted
     const tokenParts = accessToken.split(".");
@@ -327,9 +330,19 @@ const getUserInfo = async (accessToken: string): Promise<TikTokUserInfo> => {
       params,
     });
 
-    logger.info(
-      `✅ TikTok getUserInfo - Success: ${JSON.stringify(response.data)}`
-    );
+    const requestDuration = Date.now() - requestStartTime;
+    logger.info("✅ TikTok getUserInfo - Success:", {
+      duration: requestDuration,
+      status: response.status,
+      statusText: response.statusText,
+      hasData: !!response.data,
+      dataKeys: response.data ? Object.keys(response.data) : [],
+      userInfo: response.data ? {
+        hasUser: !!(response.data.data && response.data.data.user),
+        userKeys: response.data.data && response.data.data.user ? Object.keys(response.data.data.user) : [],
+      } : null,
+    });
+    
     return response.data;
   } catch (error: any) {
     logger.error("❌ TikTok get user info error - Full error:", error);

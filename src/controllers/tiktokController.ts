@@ -2024,8 +2024,19 @@ const tryRefreshToken = async (account: any): Promise<{ success: boolean; newTok
 
 const establishTikTokSession = catchAsync(
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    const startTime = Date.now();
     logger.info("🔍 establishTikTokSession - Request received");
     logger.info("🔍 establishTikTokSession - User:", req.user?.id);
+    logger.info("🔍 establishTikTokSession - Request details:", {
+      method: req.method,
+      url: req.url,
+      headers: {
+        'user-agent': req.get('user-agent'),
+        'authorization': req.get('authorization') ? 'Bearer [REDACTED]' : 'None',
+      },
+      params: req.params,
+      body: req.body,
+    });
 
     if (!req.user) {
       return next(new CustomError("User authentication required", 401));
@@ -2038,6 +2049,8 @@ const establishTikTokSession = catchAsync(
     }
 
     try {
+      logger.info("🔍 Starting database query for account:", accountId);
+      
       // Get the specific account
       const { data: account, error: fetchError } = await supabase
         .from("tiktok_profiles")
@@ -2046,13 +2059,33 @@ const establishTikTokSession = catchAsync(
         .eq("user_id", req.user.id)
         .single();
 
+      logger.info("🔍 Database query completed:", {
+        accountFound: !!account,
+        error: fetchError,
+        accountId: accountId,
+        userId: req.user.id,
+      });
+
       if (fetchError || !account) {
-        logger.error("❌ Account not found or doesn't belong to user");
+        logger.error("❌ Account not found or doesn't belong to user:", {
+          fetchError,
+          accountId,
+          userId: req.user.id,
+        });
         return res.status(404).json({
           status: "error",
           message: "TikTok account not found or doesn't belong to you",
         });
       }
+
+      logger.info("🔍 Account retrieved successfully:", {
+        accountId: account.id,
+        username: account.username,
+        displayName: account.display_name,
+        hasAccessToken: !!account.access_token,
+        hasRefreshToken: !!account.refresh_token,
+        tokenExpiresAt: account.token_expires_at,
+      });
 
       // Validate required token data
       if (!account.access_token || !account.token_expires_at) {
@@ -2072,6 +2105,13 @@ const establishTikTokSession = catchAsync(
       const now = new Date();
       const expiresAt = new Date(account.token_expires_at);
       const isExpired = now >= expiresAt;
+
+      logger.info("🔍 Token expiration check:", {
+        now: now.toISOString(),
+        expiresAt: expiresAt.toISOString(),
+        isExpired: isExpired,
+        timeDiff: now.getTime() - expiresAt.getTime(),
+      });
 
       let currentAccount = account;
       
@@ -2127,7 +2167,23 @@ const establishTikTokSession = catchAsync(
           throw new Error("No access token available after refresh");
         }
         
+        logger.info("🔍 Making TikTok API call with token:", {
+          accountId: currentAccount.id,
+          tokenLength: currentAccount.access_token.length,
+          tokenStart: currentAccount.access_token.substring(0, 20),
+          tokenEnd: currentAccount.access_token.substring(currentAccount.access_token.length - 20),
+        });
+        
+        const apiCallStartTime = Date.now();
         const userInfo = await tiktokService.getUserInfo(currentAccount.access_token);
+        const apiCallDuration = Date.now() - apiCallStartTime;
+        
+        logger.info("🔍 TikTok API call completed:", {
+          duration: apiCallDuration,
+          success: !!userInfo,
+          hasData: !!(userInfo && userInfo.data),
+          hasUser: !!(userInfo && userInfo.data && userInfo.data.user),
+        });
         
         if (!userInfo || !userInfo.data || !userInfo.data.user) {
           throw new Error("Invalid response from TikTok API");
@@ -2135,7 +2191,17 @@ const establishTikTokSession = catchAsync(
 
         const tikTokUser = userInfo.data.user;
 
-        logger.info("✅ TikTok session established successfully");
+        const totalDuration = Date.now() - startTime;
+        logger.info("✅ TikTok session established successfully:", {
+          totalDuration: totalDuration,
+          userInfo: {
+            open_id: tikTokUser.open_id,
+            display_name: tikTokUser.display_name,
+            avatar_url: tikTokUser.avatar_url,
+            is_verified: tikTokUser.is_verified,
+          },
+        });
+        
         return res.status(200).json({
           status: "success",
           message: "TikTok session established successfully",
