@@ -2363,9 +2363,118 @@ const establishTikTokSession = catchAsync(
             tokenStart: account.access_token ? account.access_token.substring(0, 20) : null,
           });
           
-          // AUTOMATIC CLEANUP: Clear the contaminated token from this account
+          // SMART REFRESH: Try to refresh the token instead of cleaning up
+          if (account.refresh_token) {
+            try {
+              addDebugLog("🔄 Attempting smart token refresh for contaminated token:", {
+                accountId: account.id,
+                storedUsername: account.username,
+                storedDisplayName: account.display_name,
+                wrongTokenUser: tikTokUser.display_name,
+                hasRefreshToken: !!account.refresh_token,
+              });
+              
+              // Attempt to refresh the token
+              const refreshResult = await tryRefreshToken(account);
+              
+              if (refreshResult.success && refreshResult.newTokens) {
+                addDebugLog("✅ Smart token refresh successful! Validating new token...", {
+                  accountId: account.id,
+                  newTokenStart: refreshResult.newTokens.access_token.substring(0, 20),
+                });
+                
+                // Validate the new token belongs to the correct user
+                const expectedUser = account.display_name || account.username;
+                const validation = await validateTokenOwnership(refreshResult.newTokens.access_token, expectedUser);
+                
+                if (validation.isValid) {
+                  addDebugLog("✅ Smart refresh SUCCESS! New token belongs to correct user:", {
+                    accountId: account.id,
+                    expectedUser,
+                    actualUser: validation.actualUser,
+                    tokenFixed: true,
+                  });
+                  
+                  // Update the current account with the new token
+                  currentAccount = {
+                    ...account,
+                    access_token: refreshResult.newTokens.access_token,
+                    refresh_token: refreshResult.newTokens.refresh_token,
+                    token_expires_at: refreshResult.newTokens.expires_at,
+                  };
+                  
+                  // Re-call TikTok API with the new token to get correct user info
+                  const newUserInfo = await tiktokService.getBasicUserInfo(currentAccount.access_token!);
+                  
+                  if (newUserInfo && newUserInfo.data && newUserInfo.data.user) {
+                    const newTikTokUser = newUserInfo.data.user;
+                    
+                    addDebugLog("✅ Smart refresh complete! Correct user data retrieved:", {
+                      accountId: account.id,
+                      expectedUser,
+                      actualUser: newTikTokUser.display_name,
+                      tokenFixed: true,
+                      smartRefreshSuccess: true,
+                    });
+                    
+                    // Continue with normal session establishment using the corrected token
+                    const responseData = {
+                      accountId: currentAccount.id,
+                      tiktokUserId: newTikTokUser.open_id,
+                      username: newTikTokUser.display_name || currentAccount.username,
+                      avatarUrl: currentAccount.avatar_url,
+                      isVerified: currentAccount.is_verified,
+                      sessionEstablished: true,
+                      connectedAt: new Date().toISOString(),
+                      tokenRefreshed: true,
+                      smartRefreshApplied: true,
+                      scopeUsed: "basic",
+                    };
+
+                    addDebugLog("✅ Smart refresh - Final response data:", {
+                      requestedAccountId: accountId,
+                      responseAccountId: responseData.accountId,
+                      accountMatch: responseData.accountId === accountId,
+                      responseUsername: responseData.username,
+                      responseTikTokUserId: responseData.tiktokUserId,
+                      smartRefreshSuccess: true,
+                    });
+
+                    return res.status(200).json({
+                      status: "success",
+                      message: "TikTok session established successfully (token contamination fixed via smart refresh)",
+                      data: responseData,
+                      debugLogs,
+                    });
+                  }
+                } else {
+                  addDebugLog("❌ Smart refresh failed! New token still belongs to wrong user:", {
+                    accountId: account.id,
+                    expectedUser,
+                    actualUser: validation.actualUser,
+                    refreshTokenAlsoContaminated: true,
+                  });
+                }
+              } else {
+                addDebugLog("❌ Smart token refresh failed:", {
+                  accountId: account.id,
+                  refreshError: refreshResult.error,
+                  hasRefreshToken: !!account.refresh_token,
+                });
+              }
+            } catch (refreshErr) {
+              addDebugLog("❌ Error during smart token refresh:", refreshErr);
+            }
+          } else {
+            addDebugLog("❌ No refresh token available for smart refresh", {
+              accountId: account.id,
+              hasRefreshToken: !!account.refresh_token,
+            });
+          }
+          
+          // FALLBACK: If smart refresh fails, clean up and require re-authentication
           try {
-            addDebugLog("🔧 Cleaning up contaminated token from account:", {
+            addDebugLog("🔧 Smart refresh failed, falling back to token cleanup:", {
               accountId: account.id,
               storedUsername: account.username,
               storedDisplayName: account.display_name,
@@ -2387,23 +2496,25 @@ const establishTikTokSession = catchAsync(
             if (cleanupError) {
               addDebugLog("❌ Failed to cleanup contaminated token:", cleanupError);
             } else {
-              addDebugLog("✅ Successfully cleaned up contaminated token");
+              addDebugLog("✅ Successfully cleaned up contaminated token as fallback");
             }
             
           } catch (cleanupErr) {
-            addDebugLog("❌ Error during token cleanup:", cleanupErr);
+            addDebugLog("❌ Error during fallback token cleanup:", cleanupErr);
           }
           
           // Return error response requiring re-authentication
           return res.status(400).json({
             status: "error",
-            message: "Token cross-contamination detected. The account has been reset and requires re-authentication.",
+            message: "Token cross-contamination detected. Smart refresh failed. The account has been reset and requires re-authentication.",
             error_code: "TOKEN_CONTAMINATION",
             details: {
               reason: "token_contamination",
               accountId: account.id,
               storedUser: account.display_name || account.username,
               tokenBelongsTo: tikTokUser.display_name,
+              smartRefreshAttempted: true,
+              smartRefreshFailed: true,
               requiresReconnection: true,
             },
             debugLogs, // Include debug logs for production debugging
