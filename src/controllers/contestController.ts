@@ -87,7 +87,7 @@ const getLeaderboard = catchAsync(
     const { data: submissions, error } = await supabase
       .from("contest_links")
       .select(
-        "id, username, views, likes, comments, shares, thumbnail, url, title, created_at, embed_code, tiktok_video_id"
+        "id, username, views, likes, comments, shares, thumbnail, url, video_url, title, created_at, embed_code, tiktok_video_id"
       )
       .eq("contest_id", id)
       .eq("is_contest_submission", true)
