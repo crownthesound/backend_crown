@@ -74,6 +74,7 @@ router.post("/accounts/cleanup-contaminated", authMiddleware, tiktokController.s
 router.post("/videos", authMiddleware, tiktokController.getUserVideos); // Changed to POST to match client expectations
 router.post("/videos/upload", authMiddleware, tiktokController.uploadVideo); // Renamed to avoid conflict
 router.post("/videos/download", authMiddleware, tiktokController.downloadVideo); // New download endpoint
+router.post("/videos/test-download", authMiddleware, tiktokController.testVideoDownload); // Test endpoint for debugging
 router.get(
   "/videos/:videoId",
   authMiddleware,

@@ -79,6 +79,50 @@ export class VideoDownloadService {
   }
 
   /**
+   * Verifies that the Supabase bucket exists and is accessible
+   */
+  private static async verifySupabaseBucket(): Promise<void> {
+    try {
+      // Try to list files in the bucket to verify access
+      const { data, error } = await supabaseAdmin.storage
+        .from(this.BUCKET_NAME)
+        .list('', { limit: 1 });
+
+      if (error) {
+        throw new Error(`Supabase bucket verification failed: ${error.message}`);
+      }
+
+      // Check if we can get bucket info
+      const { data: buckets, error: bucketsError } = await supabaseAdmin.storage.listBuckets();
+      
+      if (bucketsError) {
+        throw new Error(`Failed to list buckets: ${bucketsError.message}`);
+      }
+
+      const targetBucket = buckets.find(bucket => bucket.name === this.BUCKET_NAME);
+      
+      if (!targetBucket) {
+        throw new Error(`Bucket '${this.BUCKET_NAME}' does not exist. Available buckets: ${buckets.map(b => b.name).join(', ')}`);
+      }
+
+      logger.info(`✅ Bucket verification successful:`, {
+        bucketName: this.BUCKET_NAME,
+        bucketId: targetBucket.id,
+        bucketPublic: targetBucket.public,
+        bucketCreatedAt: targetBucket.created_at
+      });
+
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.error(`❌ Supabase bucket verification failed:`, {
+        bucketName: this.BUCKET_NAME,
+        error: errorMessage
+      });
+      throw new Error(`Bucket verification failed: ${errorMessage}`);
+    }
+  }
+
+  /**
    * Downloads a TikTok video and stores it in Supabase storage
    */
   static async downloadAndStoreVideo(options: VideoDownloadOptions): Promise<VideoDownloadResult> {
@@ -103,6 +147,11 @@ export class VideoDownloadService {
       
       this.addLog('info', 'Input validation passed', { videoId, userId }, 'validation');
       
+      // Verify Supabase bucket exists and is accessible
+      this.addLog('info', 'Verifying Supabase bucket...', { bucketName: this.BUCKET_NAME }, 'bucket_verification');
+      await this.verifySupabaseBucket();
+      this.addLog('success', 'Supabase bucket verification passed', { bucketName: this.BUCKET_NAME }, 'bucket_verification');
+
       // Generate unique filename
       fileName = `${userId}_${videoId}_${Date.now()}_${uuidv4()}.mp4`;
       this.addLog('info', `Generated filename: ${fileName}`, { fileName }, 'filename_generation');

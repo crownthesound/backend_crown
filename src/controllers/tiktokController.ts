@@ -3149,16 +3149,95 @@ async function saveTikTokProfileToDatabase(userToken: string, tokenData: any, us
 const downloadVideo = catchAsync(
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     logger.info("🔍 downloadVideo - Request received");
-    logger.info("🔍 downloadVideo - User:", req.user?.id);
+    logger.info("🔍 downloadVideo - Full request details:", {
+      method: req.method,
+      url: req.originalUrl,
+      headers: {
+        'content-type': req.headers['content-type'],
+        'authorization': req.headers.authorization ? 'Bearer [REDACTED]' : 'No auth header',
+        'user-agent': req.headers['user-agent']
+      },
+      body: req.body,
+      query: req.query,
+      params: req.params
+    });
 
     if (!req.user) {
+      logger.error("❌ downloadVideo - Authentication failed: no user found in request");
       return next(new CustomError("User authentication required", 401));
     }
 
+    logger.info("🔍 downloadVideo - Authenticated user:", {
+      userId: req.user.id,
+      userEmail: req.user.email || 'No email'
+    });
+
     const { videoUrl, videoId } = req.body;
 
+    logger.info("🔍 downloadVideo - Request body validation:", {
+      hasVideoUrl: !!videoUrl,
+      videoUrlType: typeof videoUrl,
+      videoUrlLength: videoUrl ? videoUrl.length : 0,
+      videoUrlPreview: videoUrl ? videoUrl.substring(0, 100) + (videoUrl.length > 100 ? '...' : '') : 'undefined',
+      hasVideoId: !!videoId,
+      videoIdType: typeof videoId,
+      videoId: videoId
+    });
+
     if (!videoUrl || !videoId) {
+      logger.error("❌ downloadVideo - Validation failed:", {
+        videoUrl: !!videoUrl,
+        videoId: !!videoId,
+        bodyKeys: Object.keys(req.body),
+        bodyValues: req.body
+      });
       return next(new CustomError("Video URL and video ID are required", 400));
+    }
+
+    // Validate video URL format
+    try {
+      const url = new URL(videoUrl);
+      logger.info("🔍 downloadVideo - URL validation:", {
+        protocol: url.protocol,
+        hostname: url.hostname,
+        pathname: url.pathname,
+        isValidURL: true
+      });
+      
+      // Check if it's a valid video URL (should be an actual video file URL, not a TikTok page URL)
+      if (!videoUrl.includes('.mp4') && !videoUrl.includes('video') && !url.hostname.includes('tiktok')) {
+        logger.warn("⚠️ downloadVideo - URL might not be a direct video URL:", {
+          videoUrl: videoUrl.substring(0, 100) + '...',
+          hostname: url.hostname
+        });
+      }
+      
+    } catch (urlError) {
+      logger.error("❌ downloadVideo - Invalid URL format:", {
+        videoUrl: videoUrl.substring(0, 100) + '...',
+        error: urlError instanceof Error ? urlError.message : String(urlError)
+      });
+      
+      return res.status(400).json({
+        status: "error",
+        message: "Invalid video URL format",
+        error: {
+          type: "INVALID_URL_FORMAT",
+          message: `The provided URL is not valid: ${urlError instanceof Error ? urlError.message : 'Invalid format'}`,
+          details: {
+            videoUrl: videoUrl,
+            videoId: videoId,
+            timestamp: new Date().toISOString()
+          },
+          debugging: {
+            requestReceived: true,
+            userAuthenticated: true,
+            basicValidationPassed: true,
+            urlValidationFailed: true,
+            stage: "url_validation"
+          }
+        }
+      });
     }
 
     try {
@@ -3205,80 +3284,188 @@ const downloadVideo = catchAsync(
           },
         });
       } catch (downloadError) {
+        const errorMessage = downloadError instanceof Error ? downloadError.message : 'Unknown error';
+        const errorStack = downloadError instanceof Error ? downloadError.stack : 'No stack trace';
+        const errorLogs = (downloadError as any)?.logs || [];
+        
         logger.error(`❌ Video download failed:`, {
-          error: downloadError instanceof Error ? downloadError.message : 'Unknown error',
-          stack: downloadError instanceof Error ? downloadError.stack : 'No stack trace',
+          error: errorMessage,
+          stack: errorStack,
           videoUrl,
           videoId,
           userId: req.user.id,
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
+          errorType: downloadError instanceof Error ? downloadError.constructor.name : typeof downloadError,
+          logCount: errorLogs.length
         });
         
-        // Return failure response - don't pretend it succeeded
+        // Log each step from the download process for debugging
+        if (errorLogs.length > 0) {
+          logger.info("📋 Download process logs:", errorLogs);
+        }
+        
+        // Return detailed failure response
         return res.status(400).json({
           status: "error",
           message: "Video download failed",
           error: {
             type: "VIDEO_DOWNLOAD_FAILED",
-            message: downloadError instanceof Error ? downloadError.message : 'Unknown error',
-            videoUrl,
-            videoId,
-            timestamp: new Date().toISOString(),
-            logs: (downloadError as any)?.logs || []
+            message: errorMessage,
+            details: {
+              videoUrl: videoUrl,
+              videoId: videoId,
+              userId: req.user.id,
+              timestamp: new Date().toISOString(),
+              errorType: downloadError instanceof Error ? downloadError.constructor.name : typeof downloadError,
+              stack: errorStack
+            },
+            logs: errorLogs,
+            debugging: {
+              requestReceived: true,
+              userAuthenticated: true,
+              validationPassed: true,
+              downloadAttempted: true,
+              stage: "video_download_service"
+            }
           },
         });
       }
     } catch (error: unknown) {
-      logger.error("❌ Video download error:", error);
-      
       const errorMessage = error instanceof Error ? error.message : "Unknown error";
       const errorStack = error instanceof Error ? error.stack : "No stack trace";
       
-      // Log detailed error information
-      logger.error("❌ Video download error details:", {
+      logger.error("❌ Video download outer catch error:", {
         message: errorMessage,
         stack: errorStack,
         type: error instanceof Error ? error.constructor.name : typeof error,
         videoUrl: req.body.videoUrl,
         videoId: req.body.videoId,
         userId: req.user.id,
+        timestamp: new Date().toISOString()
       });
       
-      // Check for specific error types
-      if (errorMessage.includes("Video file too large")) {
-        return res.status(413).json({
-          status: "error",
-          message: "Video file is too large. Please use a smaller video.",
-          error_code: "FILE_TOO_LARGE",
-          details: errorMessage,
-        });
-      }
-      
-      if (errorMessage.includes("timeout")) {
-        return res.status(408).json({
-          status: "error",
-          message: "Video download timed out. Please try again.",
-          error_code: "DOWNLOAD_TIMEOUT",
-          details: errorMessage,
-        });
-      }
-      
-      if (errorMessage.includes("No video formats found") || errorMessage.includes("No suitable video format found")) {
-        return res.status(400).json({
-          status: "error",
-          message: "This video cannot be downloaded. Please try a different video.",
-          error_code: "VIDEO_NOT_DOWNLOADABLE",
-          details: errorMessage,
-        });
-      }
-      
-      // Return the actual error message instead of generic one
+      // Return detailed error response for any unexpected errors
       return res.status(500).json({
         status: "error",
-        message: `Video download failed: ${errorMessage}`,
-        error_code: "DOWNLOAD_FAILED",
-        details: errorMessage,
-        stack: process.env.NODE_ENV === "development" ? errorStack : undefined,
+        message: "Internal server error during video download",
+        error: {
+          type: "INTERNAL_SERVER_ERROR",
+          message: errorMessage,
+          details: {
+            videoUrl: req.body.videoUrl,
+            videoId: req.body.videoId,
+            userId: req.user.id,
+            timestamp: new Date().toISOString(),
+            errorType: error instanceof Error ? error.constructor.name : typeof error
+          },
+          debugging: {
+            requestReceived: true,
+            userAuthenticated: !!req.user,
+            validationPassed: !!(req.body.videoUrl && req.body.videoId),
+            downloadAttempted: false,
+            stage: "controller_outer_catch"
+          }
+        }
+      });
+    }
+  }
+);
+
+// Test endpoint for debugging video download issues
+const testVideoDownload = catchAsync(
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    logger.info("🧪 testVideoDownload - Test endpoint called");
+
+    if (!req.user) {
+      return next(new CustomError("User authentication required", 401));
+    }
+
+    // Use a test video URL if none provided
+    const testVideoUrl = req.body.videoUrl || "https://www.w3schools.com/html/mov_bbb.mp4"; // Sample video
+    const testVideoId = req.body.videoId || "test-video-" + Date.now();
+
+    logger.info("🧪 testVideoDownload - Test parameters:", {
+      testVideoUrl,
+      testVideoId,
+      userId: req.user.id
+    });
+
+    try {
+      // Test each component separately
+      const results: any = {
+        timestamp: new Date().toISOString(),
+        userId: req.user.id,
+        testVideoUrl,
+        testVideoId,
+        tests: {}
+      };
+
+      // Test 1: URL validation
+      try {
+        new URL(testVideoUrl);
+        results.tests.urlValidation = { success: true, message: "URL is valid" };
+      } catch (error) {
+        results.tests.urlValidation = { 
+          success: false, 
+          error: error instanceof Error ? error.message : String(error) 
+        };
+      }
+
+      // Test 2: Supabase bucket verification
+      try {
+        const { data: buckets } = await supabaseAdmin.storage.listBuckets();
+        const targetBucket = buckets?.find(bucket => bucket.name === 'tiktok-videos');
+        
+        results.tests.supabaseBucket = {
+          success: !!targetBucket,
+          message: targetBucket ? "Bucket exists" : "Bucket not found",
+          availableBuckets: buckets?.map(b => b.name) || [],
+          targetBucket: targetBucket || null
+        };
+      } catch (error) {
+        results.tests.supabaseBucket = {
+          success: false,
+          error: error instanceof Error ? error.message : String(error)
+        };
+      }
+
+      // Test 3: Try a simple download (without storing)
+      try {
+        const response = await axios({
+          method: 'HEAD',
+          url: testVideoUrl,
+          timeout: 10000
+        });
+        
+        results.tests.videoAccess = {
+          success: true,
+          status: response.status,
+          contentType: response.headers['content-type'],
+          contentLength: response.headers['content-length']
+        };
+      } catch (error) {
+        results.tests.videoAccess = {
+          success: false,
+          error: error instanceof Error ? error.message : String(error)
+        };
+      }
+
+      return res.status(200).json({
+        status: "success",
+        message: "Video download test completed",
+        data: results
+      });
+
+    } catch (error) {
+      logger.error("❌ testVideoDownload failed:", error);
+      
+      return res.status(500).json({
+        status: "error",
+        message: "Test failed",
+        error: {
+          message: error instanceof Error ? error.message : String(error),
+          timestamp: new Date().toISOString()
+        }
       });
     }
   }
@@ -3303,5 +3490,6 @@ export const tiktokController = {
   establishTikTokSession,
   deleteTikTokAccount,
   downloadVideo,
+  testVideoDownload,
   scanAndCleanupContaminatedTokens,
 };
