@@ -78,6 +78,36 @@ export class VideoDownloadService {
     return [...this.logs];
   }
 
+  /**
+   * Analyzes video URL to determine type and likelihood of success
+   */
+  private static analyzeVideoUrl(url: string) {
+    try {
+      const parsedUrl = new URL(url);
+      const hostname = parsedUrl.hostname.toLowerCase();
+      const pathname = parsedUrl.pathname;
+      const hasVideoExtension = /\.(mp4|webm|mov|avi)$/i.test(pathname);
+      const isTikTokDomain = hostname.includes('tiktok');
+      const isTikTokPageUrl = isTikTokDomain && pathname.includes('/video/');
+      const isDirectVideoUrl = hasVideoExtension || pathname.includes('/video') || pathname.includes('mp4');
+      
+      return {
+        hostname,
+        pathname,
+        hasVideoExtension,
+        isTikTokDomain,
+        isTikTokPageUrl,
+        isDirectVideoUrl,
+        urlType: isTikTokPageUrl ? 'tiktok_page' : isDirectVideoUrl ? 'direct_video' : 'unknown',
+        warning: isTikTokPageUrl ? 'This appears to be a TikTok page URL, not a direct video URL' : null
+      };
+    } catch (error) {
+      return {
+        error: 'Failed to parse URL',
+        warning: 'URL analysis failed - proceeding with download attempt'
+      };
+    }
+  }
 
   /**
    * Downloads a TikTok video and stores it in Supabase storage
@@ -125,18 +155,18 @@ export class VideoDownloadService {
       }
       this.addLog('success', 'Step 3/3 completed: Upload verified', { publicUrl }, 'verification_complete');
       
-      const result: VideoDownloadResult = {
-        publicUrl,
-        fileName,
-        logs: this.getLogs()
-      };
-      
       this.addLog('success', 'Video download and storage completed successfully!', {
         publicUrl,
         fileName,
         videoId,
         userId
       }, 'completion');
+      
+      const result: VideoDownloadResult = {
+        publicUrl,
+        fileName,
+        logs: this.getLogs() // Get logs after the completion log
+      };
       
       return result;
     } catch (error) {
@@ -177,12 +207,21 @@ export class VideoDownloadService {
    */
   private static async downloadVideoStream(videoUrl: string): Promise<Readable> {
     try {
-      logger.info(`🔍 Downloading video stream from: ${videoUrl}`);
+      this.addLog('info', `Downloading video stream from: ${videoUrl}`, { videoUrl }, 'stream_start');
       
       // Validate URL format
       if (!videoUrl || typeof videoUrl !== 'string') {
         throw new Error('Invalid video URL provided');
       }
+      
+      // Analyze URL to determine if it's likely a direct video URL or TikTok page URL
+      const urlAnalysis = this.analyzeVideoUrl(videoUrl);
+      this.addLog('info', 'URL Analysis completed', urlAnalysis, 'url_analysis');
+      
+      this.addLog('info', 'Making HTTP request to TikTok URL...', { 
+        timeout: this.TIMEOUT,
+        maxFileSize: `${(this.MAX_FILE_SIZE / (1024 * 1024)).toFixed(2)}MB`
+      }, 'http_request');
       
       // Make HTTP request to download video
       const response = await axios({
@@ -208,24 +247,50 @@ export class VideoDownloadService {
         throw new Error('No video data received from URL');
       }
       
-      // Check content type
+      // Log response details
       const contentType = response.headers['content-type'];
+      const contentLength = response.headers['content-length'];
+      const statusCode = response.status;
+      const finalUrl = response.config.url;
+      
+      this.addLog('info', 'HTTP response received', {
+        statusCode,
+        contentType,
+        contentLength: contentLength ? `${contentLength} bytes` : 'unknown',
+        finalUrl,
+        redirected: finalUrl !== videoUrl
+      }, 'http_response');
+      
+      // Check content type
       if (contentType && !contentType.includes('video/') && !contentType.includes('application/octet-stream')) {
-        logger.warn(`⚠️ Unexpected content type: ${contentType}`);
+        this.addLog('warn', `Unexpected content type: ${contentType}`, { 
+          contentType,
+          expectedTypes: ['video/', 'application/octet-stream']
+        }, 'content_type_warning');
       }
       
-      // Get content length for logging
-      const contentLength = response.headers['content-length'];
+      // Get content length for validation
       if (contentLength) {
-        const sizeInMB = (parseInt(contentLength) / (1024 * 1024)).toFixed(2);
-        logger.info(`📊 Video size: ${sizeInMB}MB`);
+        const sizeInBytes = parseInt(contentLength);
+        const sizeInMB = (sizeInBytes / (1024 * 1024)).toFixed(2);
         
-        if (parseInt(contentLength) > this.MAX_FILE_SIZE) {
+        this.addLog('info', `Expected video size: ${sizeInMB}MB (${sizeInBytes} bytes)`, {
+          sizeInBytes,
+          sizeInMB,
+          maxAllowed: this.MAX_FILE_SIZE
+        }, 'size_check');
+        
+        if (sizeInBytes > this.MAX_FILE_SIZE) {
           throw new Error(`Video file too large: ${sizeInMB}MB (max: ${(this.MAX_FILE_SIZE / (1024 * 1024)).toFixed(2)}MB)`);
         }
+      } else {
+        this.addLog('warn', 'No Content-Length header found - cannot verify expected file size', {}, 'size_warning');
       }
       
-      logger.info(`✅ Video stream download started successfully`);
+      this.addLog('success', 'Video stream download started successfully', {
+        streamAvailable: !!response.data
+      }, 'stream_ready');
+      
       return response.data as Readable;
       
     } catch (error) {
@@ -333,18 +398,42 @@ export class VideoDownloadService {
   }
 
   /**
-   * Converts stream to buffer with size limit
+   * Converts stream to buffer with size limit and detailed progress tracking
    */
   private static async streamToBuffer(stream: Readable): Promise<Buffer> {
     return new Promise((resolve, reject) => {
       const chunks: Buffer[] = [];
       let totalSize = 0;
+      let chunkCount = 0;
+      const startTime = Date.now();
+      
+      this.addLog('info', 'Starting stream to buffer conversion...', {
+        maxFileSize: this.MAX_FILE_SIZE,
+        timeout: this.TIMEOUT
+      }, 'buffer_start');
       
       stream.on('data', (chunk: Buffer) => {
+        chunkCount++;
         totalSize += chunk.length;
+        
+        // Log progress every 50 chunks or every MB
+        if (chunkCount % 50 === 0 || totalSize % (1024 * 1024) < chunk.length) {
+          const sizeInMB = (totalSize / (1024 * 1024)).toFixed(2);
+          this.addLog('info', `Download progress: ${sizeInMB}MB received`, {
+            totalBytes: totalSize,
+            totalMB: sizeInMB,
+            chunksReceived: chunkCount,
+            lastChunkSize: chunk.length
+          }, 'download_progress');
+        }
         
         if (totalSize > this.MAX_FILE_SIZE) {
           stream.destroy();
+          this.addLog('error', 'Video file too large, aborting download', {
+            totalSize,
+            maxSize: this.MAX_FILE_SIZE,
+            totalMB: (totalSize / (1024 * 1024)).toFixed(2)
+          }, 'size_limit_exceeded');
           reject(new Error(`Video file too large: ${totalSize} bytes (max: ${this.MAX_FILE_SIZE})`));
           return;
         }
@@ -353,15 +442,59 @@ export class VideoDownloadService {
       });
       
       stream.on('end', () => {
-        resolve(Buffer.concat(chunks));
+        const endTime = Date.now();
+        const duration = endTime - startTime;
+        const finalSizeInMB = (totalSize / (1024 * 1024)).toFixed(2);
+        
+        this.addLog('success', `Stream download completed successfully`, {
+          totalBytes: totalSize,
+          totalMB: finalSizeInMB,
+          chunksReceived: chunkCount,
+          durationMs: duration,
+          averageSpeed: totalSize > 0 ? `${((totalSize / 1024) / (duration / 1000)).toFixed(2)} KB/s` : '0 KB/s'
+        }, 'buffer_complete');
+        
+        const finalBuffer = Buffer.concat(chunks);
+        
+        // Verify buffer size matches expected
+        if (finalBuffer.length !== totalSize) {
+          this.addLog('warn', 'Buffer size mismatch detected', {
+            expectedSize: totalSize,
+            actualBufferSize: finalBuffer.length,
+            difference: finalBuffer.length - totalSize
+          }, 'buffer_size_mismatch');
+        }
+        
+        resolve(finalBuffer);
       });
       
       stream.on('error', (error) => {
+        const errorTime = Date.now();
+        const duration = errorTime - startTime;
+        
+        this.addLog('error', 'Stream error occurred during download', {
+          error: error.message,
+          totalBytesBeforeError: totalSize,
+          chunksBeforeError: chunkCount,
+          durationBeforeError: duration
+        }, 'stream_error');
+        
         reject(error);
       });
       
       // Set timeout
       const timeout = setTimeout(() => {
+        const timeoutTime = Date.now();
+        const duration = timeoutTime - startTime;
+        
+        this.addLog('error', 'Video download timeout - stream taking too long', {
+          timeoutAfter: this.TIMEOUT,
+          totalBytesBeforeTimeout: totalSize,
+          chunksBeforeTimeout: chunkCount,
+          durationMs: duration,
+          estimatedTotalSize: 'unknown'
+        }, 'download_timeout');
+        
         stream.destroy();
         reject(new Error('Video download timeout'));
       }, this.TIMEOUT);
