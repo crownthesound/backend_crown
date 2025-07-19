@@ -110,6 +110,152 @@ export class VideoDownloadService {
   }
 
   /**
+   * Extracts actual video download URL from TikTok page HTML
+   */
+  private static async extractVideoUrlFromTikTokPage(pageUrl: string): Promise<string> {
+    try {
+      this.addLog('info', 'Starting TikTok page parsing...', { pageUrl }, 'page_parsing_start');
+      
+      // Download the TikTok page HTML
+      const response = await axios({
+        method: 'GET',
+        url: pageUrl,
+        timeout: this.TIMEOUT,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.9',
+          'Accept-Encoding': 'gzip, deflate, br',
+          'Connection': 'keep-alive',
+          'Upgrade-Insecure-Requests': '1'
+        },
+        maxRedirects: 5
+      });
+
+      if (!response.data) {
+        throw new Error('No HTML data received from TikTok page');
+      }
+
+      const htmlContent = response.data;
+      this.addLog('info', 'TikTok page HTML downloaded', {
+        htmlSize: htmlContent.length,
+        contentType: response.headers['content-type']
+      }, 'page_download_complete');
+
+      // Extract video URLs from the HTML
+      const videoUrls = this.parseVideoUrlsFromHtml(htmlContent);
+      
+      if (videoUrls.length === 0) {
+        throw new Error('No video URLs found in TikTok page HTML');
+      }
+
+      // Return the best quality video URL (usually the first one or largest)
+      const selectedUrl = videoUrls[0];
+      this.addLog('success', 'Video URL extracted from TikTok page', {
+        totalUrlsFound: videoUrls.length,
+        selectedUrl,
+        allUrls: videoUrls
+      }, 'video_url_extracted');
+
+      return selectedUrl;
+
+    } catch (error) {
+      this.addLog('error', 'Failed to extract video URL from TikTok page', {
+        error: error instanceof Error ? error.message : String(error),
+        pageUrl
+      }, 'video_extraction_error');
+      throw new Error(`Video URL extraction failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Parses video URLs from TikTok page HTML
+   */
+  private static parseVideoUrlsFromHtml(html: string): string[] {
+    const videoUrls: string[] = [];
+    
+    this.addLog('info', 'Parsing HTML for video URLs...', { htmlLength: html.length }, 'html_parsing_start');
+
+    try {
+      // Method 1: Look for video URLs in script tags with JSON data
+      const scriptRegex = /<script[^>]*>([^<]*(?:videoUrl|playAddr|downloadAddr)[^<]*)<\/script>/gi;
+      let scriptMatch;
+      
+      while ((scriptMatch = scriptRegex.exec(html)) !== null) {
+        const scriptContent = scriptMatch[1];
+        
+        // Look for video URLs in the script content
+        const urlPatterns = [
+          /["'](?:videoUrl|playAddr|downloadAddr)["']\s*:\s*["']([^"']+\.mp4[^"']*)/gi,
+          /["'](?:https?:\/\/[^"']*\.mp4[^"']*)/gi,
+          /(?:https?:\/\/[^\s'"<>]+\.mp4[^\s'"<>]*)/gi
+        ];
+
+        for (const pattern of urlPatterns) {
+          let urlMatch;
+          while ((urlMatch = pattern.exec(scriptContent)) !== null) {
+            const url = urlMatch[1] || urlMatch[0];
+            if (url && url.includes('.mp4') && !videoUrls.includes(url)) {
+              videoUrls.push(url.replace(/\\u002F/g, '/').replace(/\\/g, ''));
+            }
+          }
+        }
+      }
+
+      // Method 2: Look for direct video URLs in the entire HTML
+      const directUrlPattern = /https?:\/\/[^\s'"<>]+\.mp4[^\s'"<>]*/gi;
+      let directMatch;
+      
+      while ((directMatch = directUrlPattern.exec(html)) !== null) {
+        const url = directMatch[0];
+        if (url && !videoUrls.includes(url)) {
+          videoUrls.push(url);
+        }
+      }
+
+      // Method 3: Look for TikTok CDN URLs
+      const tikTokCdnPattern = /https?:\/\/[^"'\s<>]*(?:tiktokcdn|musical\.ly|byteoversea)[^"'\s<>]*\.mp4[^"'\s<>]*/gi;
+      let cdnMatch;
+      
+      while ((cdnMatch = tikTokCdnPattern.exec(html)) !== null) {
+        const url = cdnMatch[0];
+        if (url && !videoUrls.includes(url)) {
+          videoUrls.push(url);
+        }
+      }
+
+      this.addLog('info', 'HTML parsing completed', {
+        totalUrlsFound: videoUrls.length,
+        urls: videoUrls
+      }, 'html_parsing_complete');
+
+      // Filter and validate URLs
+      const validUrls = videoUrls.filter(url => {
+        try {
+          new URL(url);
+          return url.includes('.mp4') && (url.includes('tiktok') || url.includes('musical.ly') || url.includes('byteoversea'));
+        } catch {
+          return false;
+        }
+      });
+
+      this.addLog('success', 'Video URL validation completed', {
+        originalCount: videoUrls.length,
+        validCount: validUrls.length,
+        validUrls
+      }, 'url_validation_complete');
+
+      return validUrls;
+
+    } catch (error) {
+      this.addLog('error', 'Error during HTML parsing', {
+        error: error instanceof Error ? error.message : String(error)
+      }, 'html_parsing_error');
+      return [];
+    }
+  }
+
+  /**
    * Downloads a TikTok video and stores it in Supabase storage
    */
   static async downloadAndStoreVideo(options: VideoDownloadOptions): Promise<VideoDownloadResult> {
@@ -218,15 +364,28 @@ export class VideoDownloadService {
       const urlAnalysis = this.analyzeVideoUrl(videoUrl);
       this.addLog('info', 'URL Analysis completed', urlAnalysis, 'url_analysis');
       
-      this.addLog('info', 'Making HTTP request to TikTok URL...', { 
+      let actualVideoUrl = videoUrl;
+      
+      // If this is a TikTok page URL, we need to extract the actual video URL
+      if (urlAnalysis.isTikTokPageUrl) {
+        this.addLog('info', 'TikTok page URL detected - extracting actual video URL...', {}, 'video_extraction_start');
+        actualVideoUrl = await this.extractVideoUrlFromTikTokPage(videoUrl);
+        this.addLog('success', 'Video URL extracted successfully', { 
+          originalUrl: videoUrl,
+          extractedUrl: actualVideoUrl 
+        }, 'video_extraction_complete');
+      }
+      
+      this.addLog('info', 'Making HTTP request to video URL...', { 
+        actualVideoUrl,
         timeout: this.TIMEOUT,
         maxFileSize: `${(this.MAX_FILE_SIZE / (1024 * 1024)).toFixed(2)}MB`
       }, 'http_request');
       
-      // Make HTTP request to download video
+      // Make HTTP request to download actual video
       const response = await axios({
         method: 'GET',
-        url: videoUrl,
+        url: actualVideoUrl,
         responseType: 'stream',
         timeout: this.TIMEOUT,
         headers: {
@@ -258,15 +417,21 @@ export class VideoDownloadService {
         contentType,
         contentLength: contentLength ? `${contentLength} bytes` : 'unknown',
         finalUrl,
-        redirected: finalUrl !== videoUrl
+        redirected: finalUrl !== actualVideoUrl,
+        isActualVideo: contentType?.includes('video/') || contentType?.includes('application/octet-stream')
       }, 'http_response');
       
       // Check content type
       if (contentType && !contentType.includes('video/') && !contentType.includes('application/octet-stream')) {
         this.addLog('warn', `Unexpected content type: ${contentType}`, { 
           contentType,
-          expectedTypes: ['video/', 'application/octet-stream']
+          expectedTypes: ['video/', 'application/octet-stream'],
+          warning: 'This might still be a page URL, not a direct video URL'
         }, 'content_type_warning');
+      } else {
+        this.addLog('success', 'Correct video content type detected', { 
+          contentType 
+        }, 'content_type_success');
       }
       
       // Get content length for validation
@@ -288,7 +453,9 @@ export class VideoDownloadService {
       }
       
       this.addLog('success', 'Video stream download started successfully', {
-        streamAvailable: !!response.data
+        streamAvailable: !!response.data,
+        contentType,
+        contentLength: contentLength || 'unknown'
       }, 'stream_ready');
       
       return response.data as Readable;
