@@ -3,6 +3,8 @@ import { logger } from '../utils/logger';
 import { v4 as uuidv4 } from 'uuid';
 import { Readable } from 'stream';
 import axios from 'axios';
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const Tiktok = require('@tobyg74/tiktok-api-dl');
 
 interface VideoDownloadResult {
   publicUrl: string;
@@ -23,16 +25,6 @@ interface VideoDownloadLog {
   message: string;
   details?: any;
   step?: string;
-}
-
-interface VideoDownloadProgress {
-  step: number;
-  totalSteps: number;
-  stepName: string;
-  status: 'in_progress' | 'completed' | 'failed';
-  message: string;
-  details?: any;
-  logs: VideoDownloadLog[];
 }
 
 export class VideoDownloadService {
@@ -110,48 +102,67 @@ export class VideoDownloadService {
   }
 
   /**
-   * Extracts actual video download URL from TikTok page HTML
+   * Extracts actual video download URL using TikTok API
    */
   private static async extractVideoUrlFromTikTokPage(pageUrl: string): Promise<string> {
     try {
-      this.addLog('info', 'Starting TikTok page parsing...', { pageUrl }, 'page_parsing_start');
+      this.addLog('info', 'Starting TikTok API extraction...', { pageUrl }, 'tiktok_api_start');
       
-      // Download the TikTok page HTML
-      const response = await axios({
-        method: 'GET',
-        url: pageUrl,
-        timeout: this.TIMEOUT,
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-          'Accept-Language': 'en-US,en;q=0.9',
-          'Accept-Encoding': 'gzip, deflate, br',
-          'Connection': 'keep-alive',
-          'Upgrade-Insecure-Requests': '1'
-        },
-        maxRedirects: 5
-      });
+      // Try different API versions for better compatibility
+      const apiVersions = ['v1', 'v2', 'v3'];
+      let result = null;
+      let lastError = null;
 
-      if (!response.data) {
-        throw new Error('No HTML data received from TikTok page');
+      for (const version of apiVersions) {
+        try {
+          this.addLog('info', `Trying TikTok API version ${version}...`, { version, pageUrl }, 'api_version_attempt');
+          
+          result = await Tiktok.Downloader(pageUrl, {
+            version: version
+          });
+
+          if (result && result.status === 'success') {
+            this.addLog('success', `TikTok API ${version} succeeded`, { 
+              version,
+              resultStatus: result.status 
+            }, 'api_version_success');
+            break;
+          } else {
+            this.addLog('warn', `TikTok API ${version} failed or returned no data`, { 
+              version,
+              resultStatus: result?.status || 'no result' 
+            }, 'api_version_failed');
+          }
+        } catch (versionError) {
+          lastError = versionError;
+          this.addLog('warn', `TikTok API ${version} threw error`, { 
+            version,
+            error: versionError instanceof Error ? versionError.message : String(versionError)
+          }, 'api_version_error');
+        }
       }
 
-      const htmlContent = response.data;
-      this.addLog('info', 'TikTok page HTML downloaded', {
-        htmlSize: htmlContent.length,
-        contentType: response.headers['content-type']
-      }, 'page_download_complete');
+      if (!result || result.status !== 'success') {
+        throw new Error(`All TikTok API versions failed. Last error: ${lastError instanceof Error ? lastError.message : 'Unknown error'}`);
+      }
 
-      // Extract video URLs from the HTML
-      const videoUrls = this.parseVideoUrlsFromHtml(htmlContent);
+      this.addLog('info', 'TikTok API response received', {
+        status: result.status,
+        hasResult: !!result.result,
+        resultKeys: result.result ? Object.keys(result.result) : []
+      }, 'api_response_received');
+
+      // Extract video URLs from the API response
+      const videoUrls = this.extractVideoUrlsFromApiResponse(result);
       
       if (videoUrls.length === 0) {
-        throw new Error('No video URLs found in TikTok page HTML');
+        throw new Error('No video download URLs found in TikTok API response');
       }
 
-      // Return the best quality video URL (usually the first one or largest)
-      const selectedUrl = videoUrls[0];
-      this.addLog('success', 'Video URL extracted from TikTok page', {
+      // Select the best quality video URL
+      const selectedUrl = this.selectBestVideoUrl(videoUrls);
+      
+      this.addLog('success', 'Video URL extracted via TikTok API', {
         totalUrlsFound: videoUrls.length,
         selectedUrl,
         allUrls: videoUrls
@@ -160,99 +171,150 @@ export class VideoDownloadService {
       return selectedUrl;
 
     } catch (error) {
-      this.addLog('error', 'Failed to extract video URL from TikTok page', {
+      this.addLog('error', 'Failed to extract video URL via TikTok API', {
         error: error instanceof Error ? error.message : String(error),
         pageUrl
       }, 'video_extraction_error');
-      throw new Error(`Video URL extraction failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw new Error(`TikTok API extraction failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
   /**
-   * Parses video URLs from TikTok page HTML
+   * Extracts video URLs from TikTok API response
    */
-  private static parseVideoUrlsFromHtml(html: string): string[] {
+  private static extractVideoUrlsFromApiResponse(apiResult: any): string[] {
     const videoUrls: string[] = [];
     
-    this.addLog('info', 'Parsing HTML for video URLs...', { htmlLength: html.length }, 'html_parsing_start');
+    this.addLog('info', 'Extracting video URLs from TikTok API response...', {
+      hasResult: !!apiResult.result,
+      resultType: typeof apiResult.result
+    }, 'api_extraction_start');
 
     try {
-      // Method 1: Look for video URLs in script tags with JSON data
-      const scriptRegex = /<script[^>]*>([^<]*(?:videoUrl|playAddr|downloadAddr)[^<]*)<\/script>/gi;
-      let scriptMatch;
+      const result = apiResult.result;
       
-      while ((scriptMatch = scriptRegex.exec(html)) !== null) {
-        const scriptContent = scriptMatch[1];
-        
-        // Look for video URLs in the script content
-        const urlPatterns = [
-          /["'](?:videoUrl|playAddr|downloadAddr)["']\s*:\s*["']([^"']+\.mp4[^"']*)/gi,
-          /["'](?:https?:\/\/[^"']*\.mp4[^"']*)/gi,
-          /(?:https?:\/\/[^\s'"<>]+\.mp4[^\s'"<>]*)/gi
-        ];
+      if (!result) {
+        throw new Error('No result data in API response');
+      }
 
-        for (const pattern of urlPatterns) {
-          let urlMatch;
-          while ((urlMatch = pattern.exec(scriptContent)) !== null) {
-            const url = urlMatch[1] || urlMatch[0];
-            if (url && url.includes('.mp4') && !videoUrls.includes(url)) {
-              videoUrls.push(url.replace(/\\u002F/g, '/').replace(/\\/g, ''));
-            }
+      // Log the structure for debugging
+      this.addLog('info', 'API result structure analysis', {
+        resultKeys: Object.keys(result),
+        hasVideo: !!result.video,
+        hasVideos: !!result.videos,
+        hasDownload: !!result.download,
+        hasHdDownload: !!result.hdDownload
+      }, 'api_structure_analysis');
+
+      // Method 1: Check for direct video URL fields
+      const videoFields = ['video', 'hdVideo', 'download', 'hdDownload', 'videoUrl', 'playAddr'];
+      
+      for (const field of videoFields) {
+        if (result[field] && typeof result[field] === 'string') {
+          videoUrls.push(result[field]);
+          this.addLog('info', `Found video URL in field: ${field}`, { url: result[field] }, 'url_found');
+        }
+      }
+
+      // Method 2: Check for nested video objects
+      if (result.video && typeof result.video === 'object') {
+        const videoObj = result.video;
+        const nestedFields = ['playAddr', 'downloadAddr', 'url', 'play_addr', 'download_addr'];
+        
+        for (const field of nestedFields) {
+          if (videoObj[field] && typeof videoObj[field] === 'string') {
+            videoUrls.push(videoObj[field]);
+            this.addLog('info', `Found video URL in nested field: video.${field}`, { url: videoObj[field] }, 'nested_url_found');
           }
         }
       }
 
-      // Method 2: Look for direct video URLs in the entire HTML
-      const directUrlPattern = /https?:\/\/[^\s'"<>]+\.mp4[^\s'"<>]*/gi;
-      let directMatch;
-      
-      while ((directMatch = directUrlPattern.exec(html)) !== null) {
-        const url = directMatch[0];
-        if (url && !videoUrls.includes(url)) {
-          videoUrls.push(url);
-        }
+      // Method 3: Check for video arrays with different qualities
+      if (result.videos && Array.isArray(result.videos)) {
+        result.videos.forEach((video: any, index: number) => {
+          if (video && typeof video === 'string') {
+            videoUrls.push(video);
+            this.addLog('info', `Found video URL in videos array[${index}]`, { url: video }, 'array_url_found');
+          } else if (video && typeof video === 'object' && video.url) {
+            videoUrls.push(video.url);
+            this.addLog('info', `Found video URL in videos array[${index}].url`, { url: video.url, quality: video.quality }, 'array_object_url_found');
+          }
+        });
       }
 
-      // Method 3: Look for TikTok CDN URLs
-      const tikTokCdnPattern = /https?:\/\/[^"'\s<>]*(?:tiktokcdn|musical\.ly|byteoversea)[^"'\s<>]*\.mp4[^"'\s<>]*/gi;
-      let cdnMatch;
-      
-      while ((cdnMatch = tikTokCdnPattern.exec(html)) !== null) {
-        const url = cdnMatch[0];
-        if (url && !videoUrls.includes(url)) {
-          videoUrls.push(url);
-        }
-      }
-
-      this.addLog('info', 'HTML parsing completed', {
-        totalUrlsFound: videoUrls.length,
-        urls: videoUrls
-      }, 'html_parsing_complete');
-
-      // Filter and validate URLs
-      const validUrls = videoUrls.filter(url => {
+      // Remove duplicates and validate URLs
+      const uniqueUrls = [...new Set(videoUrls)].filter(url => {
         try {
           new URL(url);
-          return url.includes('.mp4') && (url.includes('tiktok') || url.includes('musical.ly') || url.includes('byteoversea'));
+          return url.includes('http') && (url.includes('.mp4') || url.includes('video') || url.includes('tiktok'));
         } catch {
           return false;
         }
       });
 
-      this.addLog('success', 'Video URL validation completed', {
-        originalCount: videoUrls.length,
-        validCount: validUrls.length,
-        validUrls
-      }, 'url_validation_complete');
+      this.addLog('success', 'Video URL extraction completed', {
+        totalFound: videoUrls.length,
+        uniqueValid: uniqueUrls.length,
+        urls: uniqueUrls
+      }, 'api_extraction_complete');
 
-      return validUrls;
+      return uniqueUrls;
 
     } catch (error) {
-      this.addLog('error', 'Error during HTML parsing', {
-        error: error instanceof Error ? error.message : String(error)
-      }, 'html_parsing_error');
+      this.addLog('error', 'Error extracting URLs from API response', {
+        error: error instanceof Error ? error.message : String(error),
+        resultStructure: apiResult.result ? Object.keys(apiResult.result) : 'no result'
+      }, 'api_extraction_error');
       return [];
     }
+  }
+
+  /**
+   * Selects the best quality video URL from available options
+   */
+  private static selectBestVideoUrl(videoUrls: string[]): string {
+    if (videoUrls.length === 0) {
+      throw new Error('No video URLs provided for selection');
+    }
+
+    if (videoUrls.length === 1) {
+      this.addLog('info', 'Only one video URL available, selecting it', { selectedUrl: videoUrls[0] }, 'url_selection');
+      return videoUrls[0];
+    }
+
+    // Prefer URLs with quality indicators (HD, high quality, etc.)
+    const hdUrls = videoUrls.filter(url => 
+      url.includes('hd') || url.includes('high') || url.includes('720') || url.includes('1080')
+    );
+
+    if (hdUrls.length > 0) {
+      this.addLog('info', 'Selected HD quality URL', { 
+        selectedUrl: hdUrls[0],
+        hdOptions: hdUrls.length,
+        totalOptions: videoUrls.length
+      }, 'hd_url_selected');
+      return hdUrls[0];
+    }
+
+    // If no HD URLs, prefer URLs without 'watermark' in them
+    const noWatermarkUrls = videoUrls.filter(url => !url.includes('watermark'));
+    
+    if (noWatermarkUrls.length > 0) {
+      this.addLog('info', 'Selected non-watermark URL', { 
+        selectedUrl: noWatermarkUrls[0],
+        noWatermarkOptions: noWatermarkUrls.length,
+        totalOptions: videoUrls.length
+      }, 'no_watermark_selected');
+      return noWatermarkUrls[0];
+    }
+
+    // Default to first URL
+    this.addLog('info', 'Selected first available URL', { 
+      selectedUrl: videoUrls[0],
+      totalOptions: videoUrls.length
+    }, 'default_url_selected');
+    
+    return videoUrls[0];
   }
 
   /**
