@@ -8,6 +8,7 @@ interface VideoDownloadResult {
   publicUrl: string;
   fileName: string;
   fileSize?: number;
+  logs?: VideoDownloadLog[];
 }
 
 interface VideoDownloadOptions {
@@ -16,10 +17,66 @@ interface VideoDownloadOptions {
   userId: string;
 }
 
+interface VideoDownloadLog {
+  timestamp: string;
+  level: 'info' | 'warn' | 'error' | 'success';
+  message: string;
+  details?: any;
+  step?: string;
+}
+
+interface VideoDownloadProgress {
+  step: number;
+  totalSteps: number;
+  stepName: string;
+  status: 'in_progress' | 'completed' | 'failed';
+  message: string;
+  details?: any;
+  logs: VideoDownloadLog[];
+}
+
 export class VideoDownloadService {
   private static readonly BUCKET_NAME = 'tiktok-videos';
   private static readonly MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB
   private static readonly TIMEOUT = 5 * 60 * 1000; // 5 minutes
+  
+  private static logs: VideoDownloadLog[] = [];
+  
+  private static addLog(level: VideoDownloadLog['level'], message: string, details?: any, step?: string) {
+    const log: VideoDownloadLog = {
+      timestamp: new Date().toISOString(),
+      level,
+      message,
+      details,
+      step
+    };
+    
+    this.logs.push(log);
+    
+    // Also log to the regular logger
+    switch (level) {
+      case 'info':
+        logger.info(message, details);
+        break;
+      case 'warn':
+        logger.warn(message, details);
+        break;
+      case 'error':
+        logger.error(message, details);
+        break;
+      case 'success':
+        logger.info(`✅ ${message}`, details);
+        break;
+    }
+  }
+  
+  private static resetLogs() {
+    this.logs = [];
+  }
+  
+  private static getLogs(): VideoDownloadLog[] {
+    return [...this.logs];
+  }
 
   /**
    * Downloads a TikTok video and stores it in Supabase storage
@@ -27,66 +84,167 @@ export class VideoDownloadService {
   static async downloadAndStoreVideo(options: VideoDownloadOptions): Promise<VideoDownloadResult> {
     const { videoUrl, videoId, userId } = options;
     
-    logger.info(`🔍 Starting video download for URL: ${videoUrl}`, {
+    // Reset logs for this operation
+    this.resetLogs();
+    
+    this.addLog('info', `Starting video download for URL: ${videoUrl}`, {
       videoId,
       userId,
       bucketName: this.BUCKET_NAME
-    });
+    }, 'initialization');
+    
+    let fileName: string | null = null;
     
     try {
+      // Validate inputs
+      if (!videoUrl || !videoId || !userId) {
+        throw new Error('Missing required parameters: videoUrl, videoId, and userId are all required');
+      }
+      
+      this.addLog('info', 'Input validation passed', { videoId, userId }, 'validation');
+      
       // Generate unique filename
-      const fileName = `${userId}_${videoId}_${uuidv4()}.mp4`;
-      logger.info(`🔍 Generated filename: ${fileName}`);
+      fileName = `${userId}_${videoId}_${Date.now()}_${uuidv4()}.mp4`;
+      this.addLog('info', `Generated filename: ${fileName}`, { fileName }, 'filename_generation');
       
       // Download video stream
-      logger.info(`🔍 Step 1: Downloading video stream...`);
+      this.addLog('info', 'Step 1/3: Starting video stream download...', { videoUrl }, 'download_start');
       const videoStream = await this.downloadVideoStream(videoUrl);
-      logger.info(`✅ Step 1 completed: Got video stream`);
+      this.addLog('success', 'Step 1/3 completed: Got video stream', {}, 'download_complete');
       
       // Upload to Supabase storage
-      logger.info(`🔍 Step 2: Uploading to Supabase...`);
+      this.addLog('info', 'Step 2/3: Starting upload to Supabase storage...', { fileName, bucketName: this.BUCKET_NAME }, 'upload_start');
       const publicUrl = await this.uploadToSupabase(videoStream, fileName);
-      logger.info(`✅ Step 2 completed: Uploaded to Supabase`);
+      this.addLog('success', 'Step 2/3 completed: Uploaded to Supabase', { publicUrl }, 'upload_complete');
       
-      logger.info(`✅ Video download completed successfully: ${publicUrl}`);
+      // Verify upload
+      this.addLog('info', 'Step 3/3: Verifying upload...', {}, 'verification_start');
+      if (!publicUrl) {
+        throw new Error('Upload succeeded but no public URL was returned');
+      }
+      this.addLog('success', 'Step 3/3 completed: Upload verified', { publicUrl }, 'verification_complete');
       
-      return {
+      const result: VideoDownloadResult = {
         publicUrl,
         fileName,
+        logs: this.getLogs()
       };
-    } catch (error) {
-      logger.error(`❌ Video download failed for URL: ${videoUrl}`, error);
-      logger.error(`❌ Error details:`, {
-        name: error instanceof Error ? error.name : 'Unknown',
-        message: error instanceof Error ? error.message : String(error),
-        stack: error instanceof Error ? error.stack : 'No stack trace',
-        videoUrl,
+      
+      this.addLog('success', 'Video download and storage completed successfully!', {
+        publicUrl,
+        fileName,
         videoId,
         userId
-      });
-      throw error;
+      }, 'completion');
+      
+      return result;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.addLog('error', `Video download failed: ${errorMessage}`, {
+        error: errorMessage,
+        videoUrl,
+        videoId,
+        userId,
+        fileName,
+        step: 'download_and_store'
+      }, 'error');
+      
+      // If we created a file but failed later, try to clean it up
+      if (fileName) {
+        try {
+          this.addLog('info', `Attempting to clean up failed upload: ${fileName}`, { fileName }, 'cleanup');
+          await this.deleteVideo(fileName);
+          this.addLog('success', `Successfully cleaned up failed upload: ${fileName}`, { fileName }, 'cleanup');
+        } catch (cleanupError) {
+          this.addLog('warn', `Failed to clean up file ${fileName}`, { 
+            fileName, 
+            error: cleanupError instanceof Error ? cleanupError.message : String(cleanupError) 
+          }, 'cleanup');
+        }
+      }
+      
+      // Include logs in the error so they can be sent to frontend
+      const enrichedError = new Error(errorMessage);
+      (enrichedError as any).logs = this.getLogs();
+      
+      throw enrichedError;
     }
   }
 
   /**
-   * Downloads video stream from TikTok URL - simplified approach
+   * Downloads video stream from TikTok URL
    */
   private static async downloadVideoStream(videoUrl: string): Promise<Readable> {
     try {
       logger.info(`🔍 Downloading video stream from: ${videoUrl}`);
       
-      // For now, let's create a placeholder that doesn't actually download
-      // but simulates the process to test the rest of the flow
-      logger.info(`🔍 TikTok video download is currently disabled due to anti-bot protection`);
-      throw new Error('TikTok video download is temporarily disabled due to anti-bot protection. The video submission will continue without storing the video file.');
+      // Validate URL format
+      if (!videoUrl || typeof videoUrl !== 'string') {
+        throw new Error('Invalid video URL provided');
+      }
+      
+      // Make HTTP request to download video
+      const response = await axios({
+        method: 'GET',
+        url: videoUrl,
+        responseType: 'stream',
+        timeout: this.TIMEOUT,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+          'Accept': 'video/mp4,video/*,*/*',
+          'Accept-Language': 'en-US,en;q=0.9',
+          'Accept-Encoding': 'gzip, deflate, br',
+          'Connection': 'keep-alive',
+          'Sec-Fetch-Dest': 'video',
+          'Sec-Fetch-Mode': 'no-cors',
+          'Sec-Fetch-Site': 'cross-site'
+        },
+        maxRedirects: 5,
+        validateStatus: (status) => status >= 200 && status < 400
+      });
+      
+      if (!response.data) {
+        throw new Error('No video data received from URL');
+      }
+      
+      // Check content type
+      const contentType = response.headers['content-type'];
+      if (contentType && !contentType.includes('video/') && !contentType.includes('application/octet-stream')) {
+        logger.warn(`⚠️ Unexpected content type: ${contentType}`);
+      }
+      
+      // Get content length for logging
+      const contentLength = response.headers['content-length'];
+      if (contentLength) {
+        const sizeInMB = (parseInt(contentLength) / (1024 * 1024)).toFixed(2);
+        logger.info(`📊 Video size: ${sizeInMB}MB`);
+        
+        if (parseInt(contentLength) > this.MAX_FILE_SIZE) {
+          throw new Error(`Video file too large: ${sizeInMB}MB (max: ${(this.MAX_FILE_SIZE / (1024 * 1024)).toFixed(2)}MB)`);
+        }
+      }
+      
+      logger.info(`✅ Video stream download started successfully`);
+      return response.data as Readable;
       
     } catch (error) {
       logger.error(`❌ Failed to download video stream:`, error);
-      logger.error(`❌ Stream download error details:`, {
-        name: error instanceof Error ? error.name : 'Unknown',
-        message: error instanceof Error ? error.message : String(error),
-        stack: error instanceof Error ? error.stack : 'No stack trace'
-      });
+      
+      // Provide more specific error messages
+      if (axios.isAxiosError(error)) {
+        if (error.code === 'ECONNABORTED') {
+          throw new Error('Video download timed out - the video may be too large or the server is slow');
+        } else if (error.response?.status === 403) {
+          throw new Error('Access denied - the video URL may be invalid or restricted');
+        } else if (error.response?.status === 404) {
+          throw new Error('Video not found - the URL may be expired or incorrect');
+        } else if (error.response?.status >= 500) {
+          throw new Error('Video server error - please try again later');
+        } else {
+          throw new Error(`HTTP ${error.response?.status}: ${error.message}`);
+        }
+      }
+      
       throw new Error(`Failed to download video: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
@@ -99,13 +257,22 @@ export class VideoDownloadService {
       logger.info(`🔍 Uploading video to Supabase: ${fileName}`);
       
       // Convert stream to buffer with size limit
+      logger.info(`🔍 Converting stream to buffer...`);
       const buffer = await this.streamToBuffer(videoStream);
       
+      const sizeInMB = (buffer.length / (1024 * 1024)).toFixed(2);
+      logger.info(`📊 Buffer size: ${sizeInMB}MB`);
+      
       if (buffer.length > this.MAX_FILE_SIZE) {
-        throw new Error(`Video file too large: ${buffer.length} bytes (max: ${this.MAX_FILE_SIZE})`);
+        throw new Error(`Video file too large: ${sizeInMB}MB (max: ${(this.MAX_FILE_SIZE / (1024 * 1024)).toFixed(2)}MB)`);
+      }
+      
+      if (buffer.length === 0) {
+        throw new Error('Video buffer is empty - no data received');
       }
       
       // Upload to Supabase storage
+      logger.info(`🔍 Uploading ${sizeInMB}MB to Supabase bucket '${this.BUCKET_NAME}'...`);
       const { data, error } = await supabaseAdmin.storage
         .from(this.BUCKET_NAME)
         .upload(fileName, buffer, {
@@ -114,24 +281,45 @@ export class VideoDownloadService {
         });
       
       if (error) {
-        logger.error(`❌ Supabase upload error:`, error);
+        logger.error(`❌ Supabase upload error:`, {
+          error: error.message,
+          fileName,
+          bucketName: this.BUCKET_NAME,
+          fileSize: sizeInMB + 'MB'
+        });
         throw new Error(`Upload failed: ${error.message}`);
       }
       
+      if (!data || !data.path) {
+        throw new Error('Upload succeeded but no data path returned');
+      }
+      
+      logger.info(`✅ File uploaded to path: ${data.path}`);
+      
       // Get public URL
+      logger.info(`🔍 Getting public URL for file...`);
       const { data: publicUrlData } = supabaseAdmin.storage
         .from(this.BUCKET_NAME)
         .getPublicUrl(fileName);
       
-      if (!publicUrlData.publicUrl) {
+      if (!publicUrlData?.publicUrl) {
         throw new Error('Failed to get public URL');
       }
       
-      logger.info(`✅ Video uploaded successfully: ${publicUrlData.publicUrl}`);
+      logger.info(`✅ Video uploaded successfully to Supabase storage!`, {
+        fileName,
+        publicUrl: publicUrlData.publicUrl,
+        fileSize: sizeInMB + 'MB',
+        bucketPath: data.path
+      });
       
       return publicUrlData.publicUrl;
     } catch (error) {
-      logger.error(`❌ Failed to upload to Supabase:`, error);
+      logger.error(`❌ Failed to upload to Supabase:`, {
+        error: error instanceof Error ? error.message : String(error),
+        fileName,
+        bucketName: this.BUCKET_NAME
+      });
       throw error;
     }
   }

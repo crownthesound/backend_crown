@@ -3164,15 +3164,34 @@ const downloadVideo = catchAsync(
     try {
       logger.info(`🔍 Starting video download for user ${req.user.id}, video: ${videoId}`);
 
-      // Try to download and store the video, but make it optional
+      // Try to download and store the video
       try {
+        logger.info(`🔍 Calling VideoDownloadService.downloadAndStoreVideo...`);
         const result = await VideoDownloadService.downloadAndStoreVideo({
           videoUrl,
           videoId,
           userId: req.user.id,
         });
 
-        logger.info(`✅ Video download completed successfully: ${result.publicUrl}`);
+        // Validate the result before logging success
+        if (!result) {
+          throw new Error('VideoDownloadService returned null/undefined result');
+        }
+
+        if (!result.publicUrl) {
+          throw new Error('VideoDownloadService returned result without publicUrl');
+        }
+
+        if (!result.fileName) {
+          throw new Error('VideoDownloadService returned result without fileName');
+        }
+
+        logger.info(`✅ Video download completed successfully!`, {
+          publicUrl: result.publicUrl,
+          fileName: result.fileName,
+          videoId,
+          userId: req.user.id
+        });
 
         return res.status(200).json({
           status: "success",
@@ -3180,20 +3199,32 @@ const downloadVideo = catchAsync(
           data: {
             publicUrl: result.publicUrl,
             fileName: result.fileName,
+            videoId,
+            downloadedAt: new Date().toISOString(),
+            logs: result.logs || [],
           },
         });
       } catch (downloadError) {
-        logger.warn(`⚠️ Video download failed, but continuing: ${downloadError instanceof Error ? downloadError.message : 'Unknown error'}`);
+        logger.error(`❌ Video download failed:`, {
+          error: downloadError instanceof Error ? downloadError.message : 'Unknown error',
+          stack: downloadError instanceof Error ? downloadError.stack : 'No stack trace',
+          videoUrl,
+          videoId,
+          userId: req.user.id,
+          timestamp: new Date().toISOString()
+        });
         
-        // Return success with null video URL - the frontend will handle this
-        return res.status(200).json({
-          status: "success",
-          message: "Video download failed but submission will continue",
-          data: {
-            publicUrl: null,
-            fileName: null,
-            downloadFailed: true,
-            reason: downloadError instanceof Error ? downloadError.message : 'Unknown error',
+        // Return failure response - don't pretend it succeeded
+        return res.status(400).json({
+          status: "error",
+          message: "Video download failed",
+          error: {
+            type: "VIDEO_DOWNLOAD_FAILED",
+            message: downloadError instanceof Error ? downloadError.message : 'Unknown error',
+            videoUrl,
+            videoId,
+            timestamp: new Date().toISOString(),
+            logs: (downloadError as any)?.logs || []
           },
         });
       }
