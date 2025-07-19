@@ -3,8 +3,6 @@ import { logger } from '../utils/logger';
 import { v4 as uuidv4 } from 'uuid';
 import { Readable } from 'stream';
 import axios from 'axios';
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const Tiktok = require('@tobyg74/tiktok-api-dl');
 
 interface VideoDownloadResult {
   publicUrl: string;
@@ -102,67 +100,84 @@ export class VideoDownloadService {
   }
 
   /**
-   * Extracts actual video download URL using TikTok API
+   * Extracts actual video download URL using external TikTok API
    */
   private static async extractVideoUrlFromTikTokPage(pageUrl: string): Promise<string> {
     try {
-      this.addLog('info', 'Starting TikTok API extraction...', { pageUrl }, 'tiktok_api_start');
+      this.addLog('info', 'Starting external TikTok API extraction...', { pageUrl }, 'tiktok_api_start');
       
-      // Try different API versions for better compatibility
-      const apiVersions = ['v1', 'v2', 'v3'];
+      // Use external TikTok downloader APIs
+      const apiEndpoints = [
+        'https://api.tiklydown.eu.org/api/download',
+        'https://tikwm.com/api/',
+        'https://www.tikwm.com/api/'
+      ];
+      
       let result = null;
       let lastError = null;
 
-      for (const version of apiVersions) {
+      for (const apiUrl of apiEndpoints) {
         try {
-          this.addLog('info', `Trying TikTok API version ${version}...`, { version, pageUrl }, 'api_version_attempt');
+          this.addLog('info', `Trying external API: ${apiUrl}...`, { apiUrl, pageUrl }, 'api_endpoint_attempt');
           
-          result = await Tiktok.Downloader(pageUrl, {
-            version: version
+          const response = await axios({
+            method: 'POST',
+            url: apiUrl,
+            data: {
+              url: pageUrl,
+              hd: 1
+            },
+            headers: {
+              'Content-Type': 'application/json',
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            },
+            timeout: 30000
           });
 
-          if (result && result.status === 'success') {
-            this.addLog('success', `TikTok API ${version} succeeded`, { 
-              version,
-              resultStatus: result.status 
-            }, 'api_version_success');
+          if (response.data && (response.data.video || response.data.data)) {
+            result = response.data;
+            this.addLog('success', `External API succeeded: ${apiUrl}`, { 
+              apiUrl,
+              hasVideo: !!(result.video || result.data?.play),
+              hasData: !!result.data
+            }, 'api_endpoint_success');
             break;
           } else {
-            this.addLog('warn', `TikTok API ${version} failed or returned no data`, { 
-              version,
-              resultStatus: result?.status || 'no result' 
-            }, 'api_version_failed');
+            this.addLog('warn', `External API returned no video data: ${apiUrl}`, { 
+              apiUrl,
+              responseData: response.data
+            }, 'api_endpoint_no_data');
           }
-        } catch (versionError) {
-          lastError = versionError;
-          this.addLog('warn', `TikTok API ${version} threw error`, { 
-            version,
-            error: versionError instanceof Error ? versionError.message : String(versionError)
-          }, 'api_version_error');
+        } catch (apiError) {
+          lastError = apiError;
+          this.addLog('warn', `External API failed: ${apiUrl}`, { 
+            apiUrl,
+            error: apiError instanceof Error ? apiError.message : String(apiError)
+          }, 'api_endpoint_error');
         }
       }
 
-      if (!result || result.status !== 'success') {
-        throw new Error(`All TikTok API versions failed. Last error: ${lastError instanceof Error ? lastError.message : 'Unknown error'}`);
+      if (!result) {
+        throw new Error(`All external TikTok APIs failed. Last error: ${lastError instanceof Error ? lastError.message : 'Unknown error'}`);
       }
 
-      this.addLog('info', 'TikTok API response received', {
-        status: result.status,
-        hasResult: !!result.result,
-        resultKeys: result.result ? Object.keys(result.result) : []
+      this.addLog('info', 'External API response received', {
+        hasVideo: !!(result.video || result.data?.play),
+        hasData: !!result.data,
+        resultKeys: Object.keys(result)
       }, 'api_response_received');
 
       // Extract video URLs from the API response
-      const videoUrls = this.extractVideoUrlsFromApiResponse(result);
+      const videoUrls = this.extractVideoUrlsFromExternalApiResponse(result);
       
       if (videoUrls.length === 0) {
-        throw new Error('No video download URLs found in TikTok API response');
+        throw new Error('No video download URLs found in external API response');
       }
 
       // Select the best quality video URL
       const selectedUrl = this.selectBestVideoUrl(videoUrls);
       
-      this.addLog('success', 'Video URL extracted via TikTok API', {
+      this.addLog('success', 'Video URL extracted via external API', {
         totalUrlsFound: videoUrls.length,
         selectedUrl,
         allUrls: videoUrls
@@ -171,54 +186,64 @@ export class VideoDownloadService {
       return selectedUrl;
 
     } catch (error) {
-      this.addLog('error', 'Failed to extract video URL via TikTok API', {
+      this.addLog('error', 'Failed to extract video URL via external API', {
         error: error instanceof Error ? error.message : String(error),
         pageUrl
       }, 'video_extraction_error');
-      throw new Error(`TikTok API extraction failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw new Error(`External TikTok API extraction failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
   /**
-   * Extracts video URLs from TikTok API response
+   * Extracts video URLs from external TikTok API response
    */
-  private static extractVideoUrlsFromApiResponse(apiResult: any): string[] {
+  private static extractVideoUrlsFromExternalApiResponse(apiResult: any): string[] {
     const videoUrls: string[] = [];
     
-    this.addLog('info', 'Extracting video URLs from TikTok API response...', {
-      hasResult: !!apiResult.result,
-      resultType: typeof apiResult.result
+    this.addLog('info', 'Extracting video URLs from external API response...', {
+      hasData: !!apiResult.data,
+      hasVideo: !!apiResult.video,
+      resultType: typeof apiResult
     }, 'api_extraction_start');
 
     try {
-      const result = apiResult.result;
+      // Handle different API response formats
+      let dataSource = apiResult;
       
-      if (!result) {
-        throw new Error('No result data in API response');
+      // If response has 'data' wrapper, use that
+      if (apiResult.data) {
+        dataSource = apiResult.data;
       }
 
       // Log the structure for debugging
-      this.addLog('info', 'API result structure analysis', {
-        resultKeys: Object.keys(result),
-        hasVideo: !!result.video,
-        hasVideos: !!result.videos,
-        hasDownload: !!result.download,
-        hasHdDownload: !!result.hdDownload
+      this.addLog('info', 'API response structure analysis', {
+        dataKeys: Object.keys(dataSource),
+        hasPlay: !!dataSource.play,
+        hasVideo: !!dataSource.video,
+        hasDownload: !!dataSource.download,
+        hasHdplay: !!dataSource.hdplay,
+        hasWmplay: !!dataSource.wmplay
       }, 'api_structure_analysis');
 
-      // Method 1: Check for direct video URL fields
-      const videoFields = ['video', 'hdVideo', 'download', 'hdDownload', 'videoUrl', 'playAddr'];
+      // Method 1: Check for direct video URL fields (common in tikwm API)
+      const videoFields = ['play', 'hdplay', 'wmplay', 'video', 'download', 'downloadAddr', 'video_url'];
       
       for (const field of videoFields) {
-        if (result[field] && typeof result[field] === 'string') {
-          videoUrls.push(result[field]);
-          this.addLog('info', `Found video URL in field: ${field}`, { url: result[field] }, 'url_found');
+        if (dataSource[field] && typeof dataSource[field] === 'string') {
+          videoUrls.push(dataSource[field]);
+          this.addLog('info', `Found video URL in field: ${field}`, { url: dataSource[field] }, 'url_found');
         }
       }
 
-      // Method 2: Check for nested video objects
-      if (result.video && typeof result.video === 'object') {
-        const videoObj = result.video;
+      // Method 2: Check if the main result has direct video URL (some APIs)
+      if (apiResult.video && typeof apiResult.video === 'string') {
+        videoUrls.push(apiResult.video);
+        this.addLog('info', 'Found video URL in root video field', { url: apiResult.video }, 'root_video_found');
+      }
+
+      // Method 3: Check for nested video objects
+      if (dataSource.video && typeof dataSource.video === 'object') {
+        const videoObj = dataSource.video;
         const nestedFields = ['playAddr', 'downloadAddr', 'url', 'play_addr', 'download_addr'];
         
         for (const field of nestedFields) {
@@ -227,19 +252,6 @@ export class VideoDownloadService {
             this.addLog('info', `Found video URL in nested field: video.${field}`, { url: videoObj[field] }, 'nested_url_found');
           }
         }
-      }
-
-      // Method 3: Check for video arrays with different qualities
-      if (result.videos && Array.isArray(result.videos)) {
-        result.videos.forEach((video: any, index: number) => {
-          if (video && typeof video === 'string') {
-            videoUrls.push(video);
-            this.addLog('info', `Found video URL in videos array[${index}]`, { url: video }, 'array_url_found');
-          } else if (video && typeof video === 'object' && video.url) {
-            videoUrls.push(video.url);
-            this.addLog('info', `Found video URL in videos array[${index}].url`, { url: video.url, quality: video.quality }, 'array_object_url_found');
-          }
-        });
       }
 
       // Remove duplicates and validate URLs
@@ -261,9 +273,9 @@ export class VideoDownloadService {
       return uniqueUrls;
 
     } catch (error) {
-      this.addLog('error', 'Error extracting URLs from API response', {
+      this.addLog('error', 'Error extracting URLs from external API response', {
         error: error instanceof Error ? error.message : String(error),
-        resultStructure: apiResult.result ? Object.keys(apiResult.result) : 'no result'
+        resultStructure: apiResult.data ? Object.keys(apiResult.data) : (apiResult ? Object.keys(apiResult) : 'no result')
       }, 'api_extraction_error');
       return [];
     }
