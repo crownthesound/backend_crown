@@ -238,10 +238,10 @@ export class VideoDownloadService {
           throw new Error('Access denied - the video URL may be invalid or restricted');
         } else if (error.response?.status === 404) {
           throw new Error('Video not found - the URL may be expired or incorrect');
-        } else if (error.response?.status >= 500) {
+        } else if (error.response?.status && error.response.status >= 500) {
           throw new Error('Video server error - please try again later');
         } else {
-          throw new Error(`HTTP ${error.response?.status}: ${error.message}`);
+          throw new Error(`HTTP ${error.response?.status || 'unknown'}: ${error.message}`);
         }
       }
       
