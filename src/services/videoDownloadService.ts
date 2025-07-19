@@ -104,8 +104,8 @@ export class VideoDownloadService {
       
       this.addLog('info', 'Input validation passed', { videoId, userId }, 'validation');
       
-      // Generate unique filename
-      fileName = `${userId}_${videoId}_${Date.now()}_${uuidv4()}.mp4`;
+      // Generate unique filename with proper path (no leading slash)
+      fileName = `videos/${userId}_${videoId}_${Date.now()}_${uuidv4()}.mp4`;
       this.addLog('info', `Generated filename: ${fileName}`, { fileName }, 'filename_generation');
       
       // Download video stream
@@ -307,11 +307,18 @@ export class VideoDownloadService {
         throw new Error('Failed to get public URL');
       }
       
+      // Check for double slashes in the URL
+      const hasDoubleSlash = publicUrlData.publicUrl.includes('//') && !publicUrlData.publicUrl.includes('https://');
+      if (hasDoubleSlash) {
+        logger.warn(`⚠️ Double slash detected in public URL, this may cause issues`);
+      }
+      
       logger.info(`✅ Video uploaded successfully to Supabase storage!`, {
         fileName,
         publicUrl: publicUrlData.publicUrl,
         fileSize: sizeInMB + 'MB',
-        bucketPath: data.path
+        bucketPath: data.path,
+        hasDoubleSlash
       });
       
       return publicUrlData.publicUrl;
