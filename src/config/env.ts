@@ -63,6 +63,9 @@ export const config = {
       process.env["TIKTOK_REDIRECT_URI"] ||
       "http://localhost:3001/api/v1/tiktok/auth/callback",
   },
+  rapidApi: {
+    key: process.env["RAPIDAPI_KEY"] || "",
+  },
 
   cors: {
     origin: process.env["FRONTEND_URL"]?.split(",") || [

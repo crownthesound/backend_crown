@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '../config/supabase';
+import { config } from '../config/env';
 import { logger } from '../utils/logger';
 import { v4 as uuidv4 } from 'uuid';
 import { Readable } from 'stream';
@@ -106,52 +107,106 @@ export class VideoDownloadService {
     try {
       this.addLog('info', 'Starting external TikTok API extraction...', { pageUrl }, 'tiktok_api_start');
       
-      // Use external TikTok downloader APIs
+      // Use RapidAPI as primary, then fallback to free APIs
       const apiEndpoints = [
-        'https://api.tiklydown.eu.org/api/download',
-        'https://tikwm.com/api/',
-        'https://www.tikwm.com/api/'
+        {
+          url: 'https://tiktok-download-without-watermark.p.rapidapi.com/analysis',
+          type: 'rapidapi',
+          method: 'GET'
+        },
+        {
+          url: 'https://api.tiklydown.eu.org/api/download',
+          type: 'free',
+          method: 'POST'
+        },
+        {
+          url: 'https://tikwm.com/api/',
+          type: 'free',
+          method: 'POST'
+        },
+        {
+          url: 'https://www.tikwm.com/api/',
+          type: 'free',
+          method: 'POST'
+        }
       ];
       
       let result = null;
       let lastError = null;
 
-      for (const apiUrl of apiEndpoints) {
+      for (const endpoint of apiEndpoints) {
         try {
-          this.addLog('info', `Trying external API: ${apiUrl}...`, { apiUrl, pageUrl }, 'api_endpoint_attempt');
+          this.addLog('info', `Trying ${endpoint.type} API: ${endpoint.url}...`, { 
+            apiUrl: endpoint.url,
+            apiType: endpoint.type,
+            pageUrl 
+          }, 'api_endpoint_attempt');
           
-          const response = await axios({
-            method: 'POST',
-            url: apiUrl,
-            data: {
-              url: pageUrl,
-              hd: 1
-            },
-            headers: {
-              'Content-Type': 'application/json',
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-            },
-            timeout: 30000
-          });
+          let response;
+          
+          if (endpoint.type === 'rapidapi') {
+            // RapidAPI configuration
+            response = await axios({
+              method: endpoint.method,
+              url: endpoint.url,
+              params: {
+                url: pageUrl,
+                hd: '0'
+              },
+              headers: {
+                'x-rapidapi-key': config.rapidApi.key,
+                'x-rapidapi-host': 'tiktok-download-without-watermark.p.rapidapi.com',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+              },
+              timeout: 30000
+            });
+          } else {
+            // Free API configuration
+            response = await axios({
+              method: endpoint.method,
+              url: endpoint.url,
+              data: {
+                url: pageUrl,
+                hd: 1
+              },
+              headers: {
+                'Content-Type': 'application/json',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+              },
+              timeout: 30000
+            });
+          }
 
-          if (response.data && (response.data.video || response.data.data)) {
+          // Check if we got valid response data
+          const hasValidData = response.data && (
+            response.data.video || 
+            response.data.data || 
+            response.data.download_url ||
+            response.data.url ||
+            response.data.play
+          );
+
+          if (hasValidData) {
             result = response.data;
-            this.addLog('success', `External API succeeded: ${apiUrl}`, { 
-              apiUrl,
-              hasVideo: !!(result.video || result.data?.play),
+            this.addLog('success', `${endpoint.type} API succeeded: ${endpoint.url}`, { 
+              apiUrl: endpoint.url,
+              apiType: endpoint.type,
+              hasVideo: !!(result.video || result.data?.play || result.download_url || result.url),
               hasData: !!result.data
             }, 'api_endpoint_success');
             break;
           } else {
-            this.addLog('warn', `External API returned no video data: ${apiUrl}`, { 
-              apiUrl,
+            this.addLog('warn', `${endpoint.type} API returned no video data: ${endpoint.url}`, { 
+              apiUrl: endpoint.url,
+              apiType: endpoint.type,
               responseData: response.data
             }, 'api_endpoint_no_data');
           }
         } catch (apiError) {
           lastError = apiError;
-          this.addLog('warn', `External API failed: ${apiUrl}`, { 
-            apiUrl,
+          this.addLog('warn', `${endpoint.type} API failed: ${endpoint.url}`, { 
+            apiUrl: endpoint.url,
+            apiType: endpoint.type,
             error: apiError instanceof Error ? apiError.message : String(apiError)
           }, 'api_endpoint_error');
         }
@@ -225,8 +280,8 @@ export class VideoDownloadService {
         hasWmplay: !!dataSource.wmplay
       }, 'api_structure_analysis');
 
-      // Method 1: Check for direct video URL fields (common in tikwm API)
-      const videoFields = ['play', 'hdplay', 'wmplay', 'video', 'download', 'downloadAddr', 'video_url'];
+      // Method 1: Check for direct video URL fields (RapidAPI and other APIs)
+      const videoFields = ['download_url', 'url', 'play', 'hdplay', 'wmplay', 'video', 'download', 'downloadAddr', 'video_url'];
       
       for (const field of videoFields) {
         if (dataSource[field] && typeof dataSource[field] === 'string') {
