@@ -84,10 +84,12 @@ const getLeaderboard = catchAsync(
     const limit = Number(req.query.limit as string) || 50;
 
     // Fetch the TikTok submissions for the contest ordered by current view count
+    // Join with tiktok_profiles to get avatar_url using the tiktok_account_id foreign key
     const { data: submissions, error } = await supabase
       .from("contest_links")
       .select(
-        "id, username, views, likes, comments, shares, thumbnail, url, video_url, title, created_at, embed_code, tiktok_video_id"
+        `id, username, views, likes, comments, shares, thumbnail, url, video_url, title, created_at, embed_code, tiktok_video_id,
+         tiktok_profiles!tiktok_account_id(avatar_url, display_name)`
       )
       .eq("contest_id", id)
       .eq("is_contest_submission", true)
@@ -100,9 +102,14 @@ const getLeaderboard = catchAsync(
     }
 
     // Build ranked response
-    const leaderboard = (submissions || []).map((submission, index) => ({
+    const leaderboard = (submissions || []).map((submission: any, index) => ({
       rank: index + 1,
       ...submission,
+      // Flatten tiktok_profiles data
+      avatar_url: submission.tiktok_profiles?.avatar_url || null,
+      tiktok_display_name: submission.tiktok_profiles?.display_name || null,
+      // Remove nested tiktok_profiles object from response
+      tiktok_profiles: undefined,
     }));
 
     res.status(200).json({

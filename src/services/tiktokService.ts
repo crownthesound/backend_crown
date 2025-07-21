@@ -194,7 +194,7 @@ const getBasicUserInfo = async (
     const url = `${TIKTOK_API_BASE}/v2/user/info/`;
     // Try with minimal fields first
     const params = {
-      fields: "open_id,display_name",
+      fields: "open_id,display_name,avatar_url,avatar_url_100,avatar_url_200",
     };
 
     logger.info(`🔍 TikTok getBasicUserInfo - URL: ${url}`);
