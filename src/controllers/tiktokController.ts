@@ -2844,22 +2844,6 @@ const deleteTikTokAccount = catchAsync(
         });
       }
 
-      // Check if this is the only account - don't allow deletion if it's the last one
-      const { data: allAccounts, error: countError } = await supabase
-        .from("tiktok_profiles")
-        .select("id")
-        .eq("user_id", req.user.id);
-
-      if (countError) {
-        throw countError;
-      }
-
-      if (allAccounts && allAccounts.length <= 1) {
-        return res.status(400).json({
-          status: "error",
-          message: "Cannot delete your only TikTok account. Connect another account first.",
-        });
-      }
 
       // Delete the account
       const { error: deleteError } = await supabase
